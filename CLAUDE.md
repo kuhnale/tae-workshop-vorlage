@@ -42,3 +42,4 @@ Siehe daten/DATEN.md.
 - Alle Baustahl-Positionen (auch Rundstahl, Kleinteile) → STAHL_PROFIL (Interpretation).
 - Summen je Titel in der Titelzeile, Gesamtsumme am Ende; offene Positionen nicht in der Summe, Anzahl wird angezeigt.
 - Alle Zellen bearbeitbar außer den CO2-Spalten (Hebel ist die EPD-Kategorie). Änderungen in localStorage je Datei, Export als Excel (Positionen + Summen je Titel).
+- Diagramm CO2 je Titel (eigenes SVG, keine Bibliothek): Balken A1–A3, C3, D je Titel, Summe A–C als Linie mit Wert; folgt Filter und manuellen Änderungen; Tooltip und Wertetabelle.

@@ -49,6 +49,22 @@
   .offenwert { color: var(--offen); font-size: .85rem; }
   .nichtbil { color: var(--leise); font-style: italic; }
   .neg { color: #1b7a3a; }
+  .diagramm { margin: 0 0 12px; border: 1px solid var(--rand); padding: 8px 12px 10px; }
+  .diagramm summary { cursor: pointer; font-weight: 600; }
+  .diagramm .unter { color: var(--leise); font-size: .85rem; margin: 4px 0 6px; }
+  .legende { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: .85rem; color: #52514e; margin: 4px 0; }
+  .legende span { display: inline-flex; align-items: center; gap: 6px; }
+  .legende i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; }
+  .legende i.linie { height: 3px; border-radius: 1px; width: 16px; background: #0b0b0b; }
+  #diagrammFlaeche { position: relative; width: 100%; }
+  #diagrammFlaeche svg { display: block; width: 100%; }
+  #diagrammFlaeche svg text { font-family: inherit; }
+  .tipp { position: absolute; pointer-events: none; background: #fff; border: 1px solid var(--rand); border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,.12); padding: 8px 10px; font-size: .82rem; white-space: nowrap; z-index: 5; }
+  .tipp table { min-width: 0; width: auto; font-size: .82rem; }
+  .tipp td { border: 0; padding: 1px 6px 1px 0; }
+  .diagrammTabelle { margin-top: 8px; font-size: .82rem; }
+  .diagrammTabelle table { min-width: 0; width: auto; }
+  .diagrammTabelle th { position: static; cursor: default; }
   tr.gruppe td { background: var(--gruppe); font-weight: 600; cursor: default; }
   tr.gesamt td { background: #dfe6ee; font-weight: 700; border-top: 2px solid #8895a5; }
   tbody tr:not(.gruppe):not(.gesamt):hover td:not(.manuell) { background: #fafbfc; }
@@ -88,6 +104,19 @@
   <button id="export" type="button">Als Excel exportieren</button>
   <button id="verwerfen" type="button">Manuelle Änderungen verwerfen</button>
 </div>
+
+<details class="diagramm" id="diagramm" open hidden>
+  <summary>Diagramm: CO2 je Titel [t CO2e]</summary>
+  <div class="unter" id="diagrammUnter"></div>
+  <div class="legende">
+    <span><i style="background:#2a78d6"></i>A1–A3 Herstellung</span>
+    <span><i style="background:#eb6834"></i>C3 Abfallbehandlung</span>
+    <span><i style="background:#1baf7a"></i>D Gutschriften (separat)</span>
+    <span><i class="linie"></i>Summe A–C (A1–A3 + C3 + C4)</span>
+  </div>
+  <div id="diagrammFlaeche"></div>
+  <details class="diagrammTabelle"><summary>Werte als Tabelle</summary><div id="diagrammWerte"></div></details>
+</details>
 
 <div class="info" id="info"></div>
 <div class="rahmen"><table id="tabelle" class="ohneweg"><thead></thead><tbody></tbody></table></div>
@@ -619,9 +648,125 @@
     if (zeilen.length && zustand.erweitert) html += summenZeile(zeilen, (suche || einheit ? 'Summe gefilterte Positionen' : 'Gesamtsumme'), 'gesamt');
     el('tabelle').tBodies[0].innerHTML = html || '<tr><td colspan="' + sp.length + '">Keine Treffer.</td></tr>';
 
+    zeichneDiagramm(zeilen, !!(suche || einheit));
+
     var manuell = zustand.zeilen.filter(function (z) { return Object.keys(z.ov).length || z.basis.some(function (v, i) { return v !== z.orig[i]; }); }).length;
     el('info').textContent = zeilen.length + ' von ' + zustand.zeilen.length + ' Positionen angezeigt' + (manuell ? ' · ' + manuell + ' Position(en) manuell geändert' : '') + ' · Zelle anklicken zum Bearbeiten';
     el('verwerfen').disabled = !manuell;
+  }
+
+  // ---------- Diagramm CO2 je Titel ----------
+  var FARBEN = { a13: '#2a78d6', c3: '#eb6834', d: '#1baf7a' };
+  var BALKEN = [{ key: 'a13', name: 'A1–A3' }, { key: 'c3', name: 'C3' }, { key: 'd', name: 'D' }];
+  var diagrammDaten = [];
+
+  function summenJeTitel(zeilen) {
+    var gruppen = {}, liste = [];
+    zeilen.forEach(function (z) {
+      var t = titel(z);
+      if (!gruppen[t]) { gruppen[t] = { titel: t, a13: 0, c3: 0, c4: 0, summe: 0, d: 0, n: 0, offen: 0, nicht: 0 }; liste.push(gruppen[t]); }
+      var g = gruppen[t]; g.n++;
+      if (z.nicht) { g.nicht++; return; }
+      if (z.w.summe === '') { g.offen++; return; }
+      CO2.forEach(function (c) { g[c.key] += z.w[c.key]; });
+    });
+    return liste.sort(function (a, b) { return a.titel.localeCompare(b.titel, 'de', { numeric: true }); });
+  }
+
+  function schritte(min, max, anzahl) {
+    var spanne = max - min || 1, roh = spanne / anzahl;
+    var p = Math.pow(10, Math.floor(Math.log10(roh))), q = roh / p;
+    var s = (q <= 1 ? 1 : q <= 2 ? 2 : q <= 2.5 ? 2.5 : q <= 5 ? 5 : 10) * p;
+    var t = [], v;
+    for (v = Math.floor(min / s) * s; v <= max + s * 0.001; v += s) t.push(Math.round(v / s) * s);
+    if (t[t.length - 1] < max) t.push(t[t.length - 1] + s);
+    return t;
+  }
+
+  // Balken mit 4px runder Datenseite, eckig an der Nulllinie
+  function balkenPfad(x, b, y0, y1) {
+    var h = Math.abs(y1 - y0), r = Math.min(4, h, b / 2);
+    if (h < 0.5) return '';
+    if (y1 < y0) { // nach oben
+      return 'M' + x + ',' + y0 + 'V' + (y1 + r) + 'Q' + x + ',' + y1 + ' ' + (x + r) + ',' + y1 + 'H' + (x + b - r) + 'Q' + (x + b) + ',' + y1 + ' ' + (x + b) + ',' + (y1 + r) + 'V' + y0 + 'Z';
+    }
+    return 'M' + x + ',' + y0 + 'V' + (y1 - r) + 'Q' + x + ',' + y1 + ' ' + (x + r) + ',' + y1 + 'H' + (x + b - r) + 'Q' + (x + b) + ',' + y1 + ' ' + (x + b) + ',' + (y1 - r) + 'V' + y0 + 'Z';
+  }
+
+  function zeichneDiagramm(zeilen, gefiltert) {
+    var box = el('diagramm');
+    if (!zustand.erweitert || zustand.idx.pos < 0) { box.hidden = true; return; }
+    box.hidden = false;
+    var daten = summenJeTitel(zeilen);
+    diagrammDaten = daten;
+    var offen = daten.reduce(function (s, g) { return s + g.offen; }, 0);
+    el('diagrammUnter').textContent = (gefiltert ? 'Nur gefilterte Positionen. ' : 'Alle Positionen. ') +
+      (offen ? offen + ' offene Position(en) fehlen in den Werten – die Summen sind zu niedrig. ' : '') +
+      'Holz: A1–A3 negativ (biogener Kohlenstoff), Freisetzung in C3.';
+
+    var flaeche = el('diagrammFlaeche');
+    var B = Math.max(flaeche.clientWidth, 320), H = 320;
+    var m = { l: 52, r: 12, o: 26, u: 30 };
+    var werte = [0];
+    daten.forEach(function (g) { werte.push(g.a13, g.c3, g.d, g.summe); });
+    var ticks = schritte(Math.min.apply(null, werte), Math.max.apply(null, werte), 6);
+    var yMin = ticks[0], yMax = ticks[ticks.length - 1];
+    var y = function (v) { return m.o + (yMax - v) / (yMax - yMin || 1) * (H - m.o - m.u); };
+    var band = (B - m.l - m.r) / Math.max(daten.length, 1);
+    var b = Math.max(6, Math.min(24, (band - 24) / 3 - 2));
+    var gruppe = BALKEN.length * b + (BALKEN.length - 1) * 2;
+
+    var svg = '<svg viewBox="0 0 ' + B + ' ' + H + '" height="' + H + '" role="img" aria-label="CO2 je Titel">';
+    ticks.forEach(function (t) {
+      svg += '<line x1="' + m.l + '" x2="' + (B - m.r) + '" y1="' + y(t) + '" y2="' + y(t) + '" stroke="' + (t === 0 ? '#8d8c86' : '#e6e5e0') + '" stroke-width="1"/>';
+      svg += '<text x="' + (m.l - 6) + '" y="' + (y(t) + 4) + '" text-anchor="end" font-size="11" fill="#52514e">' + f(t, 1) + '</text>';
+    });
+    svg += '<text x="' + m.l + '" y="12" font-size="11" fill="#52514e">t CO2e</text>';
+    daten.forEach(function (g, i) {
+      var x0 = m.l + i * band + (band - gruppe) / 2;
+      BALKEN.forEach(function (s, k) {
+        svg += '<path d="' + balkenPfad(x0 + k * (b + 2), b, y(0), y(g[s.key])) + '" fill="' + FARBEN[s.key] + '"/>';
+      });
+      // Summe A–C als Strich über die Gruppe mit Wert
+      var ys = y(g.summe);
+      svg += '<line x1="' + (x0 - 4) + '" x2="' + (x0 + gruppe + 4) + '" y1="' + ys + '" y2="' + ys + '" stroke="#fcfcfb" stroke-width="7" stroke-linecap="round"/>';
+      svg += '<line x1="' + (x0 - 4) + '" x2="' + (x0 + gruppe + 4) + '" y1="' + ys + '" y2="' + ys + '" stroke="#0b0b0b" stroke-width="3" stroke-linecap="round"/>';
+      if (band - gruppe > 70) { // Summenwert rechts neben der Linie
+        svg += '<text x="' + (x0 + gruppe + 10) + '" y="' + (ys + 4) + '" font-size="11" font-weight="600" fill="#0b0b0b">Σ ' + f(g.summe, 1) + '</text>';
+      } else { // schmal: über der höchsten Marke
+        var oben = Math.min(ys, y(Math.max(g.a13, g.c3, g.d, 0)));
+        svg += '<text x="' + (x0 + gruppe / 2) + '" y="' + (oben - 6) + '" text-anchor="middle" font-size="10" font-weight="600" fill="#0b0b0b">' + f(g.summe, 0) + '</text>';
+      }
+      svg += '<text x="' + (m.l + i * band + band / 2) + '" y="' + (H - 10) + '" text-anchor="middle" font-size="12" fill="#0b0b0b">' + (band > 80 ? 'Titel ' : '') + esc(g.titel) + (g.offen ? ' *' : '') + '</text>';
+      svg += '<rect class="ziel" data-i="' + i + '" x="' + (m.l + i * band) + '" y="' + m.o + '" width="' + band + '" height="' + (H - m.o - m.u) + '" fill="transparent"/>';
+    });
+    svg += '</svg>';
+    flaeche.innerHTML = svg + '<div class="tipp" id="tipp" hidden></div>';
+
+    // Wertetabelle (zugleich Ersatz für Farbe allein)
+    var h = '<table><thead><tr><th>Titel</th><th class="zahl">A1–A3</th><th class="zahl">C3</th><th class="zahl">C4</th><th class="zahl">Summe A–C</th><th class="zahl">D</th><th class="zahl">offen</th></tr></thead><tbody>';
+    daten.forEach(function (g) {
+      h += '<tr><td>Titel ' + esc(g.titel) + '</td>' + ['a13', 'c3', 'c4', 'summe', 'd'].map(function (k) { return zahlZelle(g[k], 2); }).join('') + '<td class="zahl">' + g.offen + '</td></tr>';
+    });
+    el('diagrammWerte').innerHTML = h + '</tbody></table>' + (offen ? '<p>* Titel mit offenen Positionen</p>' : '');
+  }
+
+  function zeigeTipp(ev) {
+    var ziel = ev.target.closest('rect.ziel'), tipp = el('tipp');
+    if (!tipp) return;
+    if (!ziel) { tipp.hidden = true; return; }
+    var g = diagrammDaten[+ziel.getAttribute('data-i')];
+    var zeile = function (farbe, name, v) {
+      return '<tr><td>' + (farbe ? '<i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:' + farbe + '"></i> ' : '') + name + '</td><td class="zahl">' + f(v, 2) + ' t</td></tr>';
+    };
+    tipp.innerHTML = '<strong>Titel ' + esc(g.titel) + '</strong> · ' + g.n + ' Pos.' + (g.offen ? ', ' + g.offen + ' offen' : '') + (g.nicht ? ', ' + g.nicht + ' nicht bilanziert' : '') +
+      '<table>' + zeile(FARBEN.a13, 'A1–A3', g.a13) + zeile(FARBEN.c3, 'C3', g.c3) + zeile('', 'C4', g.c4) +
+      '<tr><td><strong>Summe A–C</strong></td><td class="zahl"><strong>' + f(g.summe, 2) + ' t</strong></td></tr>' + zeile(FARBEN.d, 'D (separat)', g.d) + '</table>';
+    tipp.hidden = false;
+    var fl = el('diagrammFlaeche').getBoundingClientRect();
+    var x = ev.clientX - fl.left + 14, yy = ev.clientY - fl.top + 10;
+    if (x + tipp.offsetWidth > fl.width) x = ev.clientX - fl.left - tipp.offsetWidth - 14;
+    tipp.style.left = Math.max(0, x) + 'px'; tipp.style.top = yy + 'px';
   }
 
   // ---------- Bearbeiten ----------
@@ -742,6 +887,9 @@
       var td = ev.target.closest("td[data-c]"); if (td && document.contains(td)) bearbeite(td);
     });
     el('suche').addEventListener('input', zeichne);
+    el('diagrammFlaeche').addEventListener('mousemove', zeigeTipp);
+    el('diagrammFlaeche').addEventListener('mouseleave', function () { var t = el('tipp'); if (t) t.hidden = true; });
+    var rt; window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(function () { if (zustand.zeilen.length) zeichne(); }, 150); });
     el('einheit').addEventListener('change', zeichne);
     el('gruppieren').addEventListener('change', zeichne);
     el('rechenweg').addEventListener('change', function () { el('tabelle').classList.toggle('ohneweg', !this.checked); });
