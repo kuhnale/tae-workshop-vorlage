@@ -25,3 +25,6 @@
 Siehe daten/DATEN.md.
 
 ## Unsere Entscheidungen
+- Mengenliste-Viewer (index.html): lädt daten/mengenliste/Mengenliste_Beispielprojekt.xlsx automatisch, andere .xlsx per Upload/Drag & Drop.
+- Funktionen: Suche (Pos., Kurztext), Filter nach Einheit, Sortieren per Spaltenkopf, Gruppierung nach Titel (Teil der Pos. vor dem ersten Punkt).
+- Nur Anzeige 1:1 wie in der Excel-Datei: keine Prüfhinweise, keine Summen (gemischte Einheiten).

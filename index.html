@@ -3,50 +3,237 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Hallo Esslingen</title>
+<title>Mengenliste Viewer</title>
 <style>
-  body { font-family: system-ui, sans-serif; margin: 2rem; background: #fff; color: #222; }
-  #status { font-size: 1.5rem; }
-  .fehler { color: #b00020; }
+  :root { --rand: #d0d4da; --kopf: #eef1f5; --gruppe: #f6f7f9; --akzent: #1f5fa8; --text: #222; --leise: #666; }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 16px; background: #fff; color: var(--text); }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; }
+  .quelle { color: var(--leise); font-size: .9rem; margin: 0 0 16px; }
+  .leiste { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px; }
+  .leiste input[type=search] { padding: 6px 8px; min-width: 220px; flex: 1 1 220px; max-width: 360px; }
+  .leiste select { padding: 6px 8px; }
+  .ablage { border: 2px dashed var(--rand); border-radius: 6px; padding: 10px 14px; color: var(--leise); font-size: .9rem; margin-bottom: 12px; }
+  .ablage.aktiv { border-color: var(--akzent); color: var(--akzent); }
+  .info { color: var(--leise); font-size: .9rem; margin-bottom: 8px; }
+  .fehler { color: #b00020; font-weight: 600; }
+  .rahmen { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: .95rem; }
+  th, td { border: 1px solid var(--rand); padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: var(--kopf); cursor: pointer; user-select: none; white-space: nowrap; }
+  th .pfeil { color: var(--akzent); margin-left: 4px; }
+  td.zahl, th.zahl { text-align: right; }
+  td.zahl { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.pos { white-space: nowrap; }
+  tr.gruppe td { background: var(--gruppe); font-weight: 600; }
+  tbody tr:not(.gruppe):hover td { background: #fafbfc; }
 </style>
 </head>
 <body>
-<h1 id="status">Lade …</h1>
-<p>Quelle: daten/mengenliste/Mengenliste_Beispielprojekt.xlsx, Blatt „Daten“, Zeilen ab Zeile 5 (Kopfzeile in Zeile 4)</p>
+<h1>Mengenliste</h1>
+<p class="quelle" id="quelle">Lade …</p>
+
+<div class="ablage" id="ablage">
+  Andere Excel-Datei öffnen: hierher ziehen oder <input type="file" id="datei" accept=".xlsx,.xls,.xlsm">
+</div>
+
+<div class="leiste">
+  <input type="search" id="suche" placeholder="Suche in Pos. und Kurztext …">
+  <label>Einheit: <select id="einheit"><option value="">alle</option></select></label>
+  <label><input type="checkbox" id="gruppieren" checked> nach Titel gruppieren</label>
+</div>
+
+<div class="info" id="info"></div>
+<div class="rahmen"><table id="tabelle"><thead></thead><tbody></tbody></table></div>
+
 <script>
 (function () {
-  var DATEI = 'daten/mengenliste/Mengenliste_Beispielprojekt.xlsx';
-  var status = document.getElementById('status');
+  var STANDARD_DATEI = 'daten/mengenliste/Mengenliste_Beispielprojekt.xlsx';
+  var el = function (id) { return document.getElementById(id); };
 
-  function fehler(text) {
-    status.textContent = 'Fehler: ' + text;
-    status.className = 'fehler';
+  var zustand = { kopf: [], zeilen: [], sortSpalte: -1, sortAuf: true, zahlSpalten: {} };
+
+  function zeigeFehler(text) {
+    el('info').innerHTML = '<span class="fehler">Fehler: ' + esc(text) + '</span>';
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; });
+  }
+
+  var zahlFormat = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 3 });
+
+  // Excel-Arbeitsmappe einlesen: Kopfzeile suchen (erste Zelle "Pos."), sonst Zeile 4 laut DATEN.md
+  function verarbeite(buf, name) {
+    var wb = XLSX.read(buf, { type: 'array' });
+    var blatt = wb.Sheets['Daten'] ? 'Daten' : wb.SheetNames[0];
+    var alle = XLSX.utils.sheet_to_json(wb.Sheets[blatt], { header: 1, defval: '', blankrows: true });
+
+    var kopfIdx = -1;
+    for (var i = 0; i < alle.length; i++) {
+      if (String(alle[i][0]).trim().toLowerCase().indexOf('pos') === 0) { kopfIdx = i; break; }
+    }
+    if (kopfIdx < 0) kopfIdx = 3;
+
+    var kopf = alle[kopfIdx].map(function (k) { return String(k).trim(); });
+    while (kopf.length && kopf[kopf.length - 1] === '') kopf.pop();
+
+    var zeilen = alle.slice(kopfIdx + 1)
+      .map(function (z, j) { return { excelZeile: kopfIdx + 2 + j, werte: kopf.map(function (_, s) { return z[s] === undefined ? '' : z[s]; }) }; })
+      .filter(function (z) { return z.werte.some(function (c) { return c !== '' && c !== null; }); });
+
+    // Spalten, die nur Zahlen (oder leer) enthalten, rechtsbündig und numerisch sortieren
+    var zahlSpalten = {};
+    kopf.forEach(function (_, s) {
+      var werte = zeilen.map(function (z) { return z.werte[s]; }).filter(function (v) { return v !== ''; });
+      zahlSpalten[s] = werte.length > 0 && werte.every(function (v) { return typeof v === 'number'; });
+    });
+
+    zustand = { kopf: kopf, zeilen: zeilen, sortSpalte: -1, sortAuf: true, zahlSpalten: zahlSpalten };
+
+    el('quelle').textContent = 'Quelle: ' + name + ', Blatt „' + blatt + '“, Kopfzeile in Zeile ' + (kopfIdx + 1) +
+      ', Daten ab Zeile ' + (kopfIdx + 2);
+
+    var einheitSpalte = spalte('einheit');
+    var sel = el('einheit');
+    sel.innerHTML = '<option value="">alle</option>';
+    if (einheitSpalte >= 0) {
+      var einheiten = {};
+      zeilen.forEach(function (z) { var e = String(z.werte[einheitSpalte]); if (e) einheiten[e] = true; });
+      Object.keys(einheiten).sort().forEach(function (e) {
+        var o = document.createElement('option'); o.value = e; o.textContent = e; sel.appendChild(o);
+      });
+      sel.disabled = false;
+    } else {
+      sel.disabled = true;
+    }
+    el('suche').value = '';
+    zeichne();
+  }
+
+  function spalte(name) {
+    for (var i = 0; i < zustand.kopf.length; i++) {
+      if (zustand.kopf[i].toLowerCase().indexOf(name) === 0) return i;
+    }
+    return -1;
+  }
+
+  function vergleiche(a, b, s) {
+    var x = a.werte[s], y = b.werte[s];
+    if (zustand.zahlSpalten[s]) {
+      x = x === '' ? -Infinity : x; y = y === '' ? -Infinity : y;
+      return x - y;
+    }
+    return String(x).localeCompare(String(y), 'de', { numeric: true, sensitivity: 'base' });
+  }
+
+  function zeichne() {
+    var kopf = zustand.kopf;
+    var posS = spalte('pos'), textS = spalte('kurztext'), einhS = spalte('einheit');
+    var suche = el('suche').value.trim().toLowerCase();
+    var einheit = el('einheit').value;
+    var gruppieren = el('gruppieren').checked && posS >= 0;
+
+    var zeilen = zustand.zeilen.filter(function (z) {
+      if (einheit && String(z.werte[einhS]) !== einheit) return false;
+      if (!suche) return true;
+      var t = (posS >= 0 ? z.werte[posS] : '') + ' ' + (textS >= 0 ? z.werte[textS] : z.werte.join(' '));
+      return t.toLowerCase().indexOf(suche) >= 0;
+    });
+
+    var s = zustand.sortSpalte;
+    if (s >= 0) {
+      zeilen.sort(function (a, b) { var r = vergleiche(a, b, s); return zustand.sortAuf ? r : -r; });
+    }
+    // Bei Gruppierung: stabil nach Titel (Teil vor dem ersten Punkt) ordnen, innerhalb des Titels gilt die Sortierung
+    if (gruppieren) {
+      zeilen = zeilen.map(function (z, i) { return { z: z, i: i }; })
+        .sort(function (a, b) {
+          var r = titel(a.z).localeCompare(titel(b.z), 'de', { numeric: true });
+          return r || a.i - b.i;
+        })
+        .map(function (o) { return o.z; });
+    }
+
+    var thead = '<tr>' + kopf.map(function (k, i) {
+      var pfeil = i === s ? '<span class="pfeil">' + (zustand.sortAuf ? '▲' : '▼') + '</span>' : '';
+      return '<th data-s="' + i + '"' + (zustand.zahlSpalten[i] ? ' class="zahl"' : '') + ' title="Klicken zum Sortieren">' + esc(k) + pfeil + '</th>';
+    }).join('') + '</tr>';
+    el('tabelle').tHead.innerHTML = thead;
+
+    var html = '', letzterTitel = null;
+    zeilen.forEach(function (z) {
+      if (gruppieren) {
+        var t = titel(z);
+        if (t !== letzterTitel) {
+          var anzahl = zeilen.filter(function (y) { return titel(y) === t; }).length;
+          html += '<tr class="gruppe"><td colspan="' + kopf.length + '">Titel ' + esc(t) + ' (' + anzahl + ' Pos.)</td></tr>';
+          letzterTitel = t;
+        }
+      }
+      html += '<tr title="Excel-Zeile ' + z.excelZeile + '">' + z.werte.map(function (v, i) {
+        if (zustand.zahlSpalten[i]) return '<td class="zahl">' + (v === '' ? '' : zahlFormat.format(v)) + '</td>';
+        return '<td' + (i === posS ? ' class="pos"' : '') + '>' + esc(v) + '</td>';
+      }).join('') + '</tr>';
+    });
+    el('tabelle').tBodies[0].innerHTML = html || '<tr><td colspan="' + kopf.length + '">Keine Treffer.</td></tr>';
+
+    el('info').textContent = zeilen.length + ' von ' + zustand.zeilen.length + ' Positionen angezeigt';
+  }
+
+  function titel(z) {
+    var p = String(z.werte[spalte('pos')]);
+    var i = p.indexOf('.');
+    return i > 0 ? p.slice(0, i) : p;
+  }
+
+  function ladeDatei(file) {
+    var r = new FileReader();
+    r.onload = function () {
+      try { verarbeite(new Uint8Array(r.result), file.name); } catch (e) { zeigeFehler(e.message); }
+    };
+    r.onerror = function () { zeigeFehler('Datei konnte nicht gelesen werden.'); };
+    r.readAsArrayBuffer(file);
   }
 
   function start() {
-    fetch(DATEI)
+    el('tabelle').tHead.addEventListener('click', function (ev) {
+      var th = ev.target.closest('th'); if (!th) return;
+      var s = +th.getAttribute('data-s');
+      if (zustand.sortSpalte === s) zustand.sortAuf = !zustand.sortAuf; else { zustand.sortSpalte = s; zustand.sortAuf = true; }
+      zeichne();
+    });
+    el('suche').addEventListener('input', zeichne);
+    el('einheit').addEventListener('change', zeichne);
+    el('gruppieren').addEventListener('change', zeichne);
+    el('datei').addEventListener('change', function () { if (this.files[0]) ladeDatei(this.files[0]); });
+
+    var ablage = el('ablage');
+    ablage.addEventListener('dragover', function (ev) { ev.preventDefault(); ablage.classList.add('aktiv'); });
+    ablage.addEventListener('dragleave', function () { ablage.classList.remove('aktiv'); });
+    ablage.addEventListener('drop', function (ev) {
+      ev.preventDefault(); ablage.classList.remove('aktiv');
+      if (ev.dataTransfer.files[0]) ladeDatei(ev.dataTransfer.files[0]);
+    });
+
+    fetch(STANDARD_DATEI)
       .then(function (r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status + ' beim Laden von ' + DATEI);
+        if (!r.ok) throw new Error('HTTP ' + r.status + ' beim Laden von ' + STANDARD_DATEI);
         return r.arrayBuffer();
       })
-      .then(function (buf) {
-        var wb = XLSX.read(buf, { type: 'array' });
-        var ws = wb.Sheets['Daten'] || wb.Sheets[wb.SheetNames[0]];
-        // range: 4 = ab Excel-Zeile 5 (Zeilen 1-4: Titel, Hinweis, Leerzeile, Kopfzeile)
-        var zeilen = XLSX.utils.sheet_to_json(ws, { header: 1, range: 4, blankrows: false, defval: '' });
-        var daten = zeilen.filter(function (z) {
-          return z.some(function (c) { return c !== '' && c !== null; });
-        });
-        status.textContent = 'Hallo Esslingen: ' + daten.length + ' Zeilen';
-      })
-      .catch(function (e) { fehler(e.message); });
+      .then(function (buf) { verarbeite(buf, STANDARD_DATEI); })
+      .catch(function (e) {
+        el('quelle').textContent = 'Standarddatei nicht geladen – bitte Excel-Datei oben auswählen.';
+        zeigeFehler(e.message);
+      });
   }
 
-  var s = document.createElement('script');
-  s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
-  s.onload = start;
-  s.onerror = function () { fehler('SheetJS konnte nicht geladen werden.'); };
-  document.head.appendChild(s);
+  // SheetJS nachladen (htmlpreview führt nur Inline-Skripte aus)
+  var skript = document.createElement('script');
+  skript.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+  skript.onload = start;
+  skript.onerror = function () { el('quelle').textContent = ''; zeigeFehler('SheetJS konnte nicht geladen werden.'); };
+  document.head.appendChild(skript);
 })();
 </script>
 </body>
