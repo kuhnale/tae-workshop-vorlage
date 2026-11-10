@@ -3,57 +3,78 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mengenliste Viewer</title>
+<title>Mengenliste Ökobilanz</title>
 <style>
-  :root { --rand: #d0d4da; --kopf: #eef1f5; --gruppe: #f6f7f9; --akzent: #1f5fa8; --text: #222; --leise: #666; --annahme: #8a5a00; --offen: #b00020; }
+  :root { --rand: #d0d4da; --kopf: #eef1f5; --gruppe: #f1f3f6; --akzent: #1f5fa8; --text: #222; --leise: #666; --annahme: #8a5a00; --offen: #b00020; --manuell: #6b2fa3; }
   * { box-sizing: border-box; }
-  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 16px; background: #fff; color: var(--text); }
+  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 12px 16px; background: #fff; color: var(--text); }
   h1 { font-size: 1.4rem; margin: 0 0 4px; }
-  .quelle { color: var(--leise); font-size: .9rem; margin: 0 0 12px; }
-  .grundlagen { font-size: .85rem; color: var(--leise); margin: 0 0 12px; padding: 8px 12px; background: var(--gruppe); border-left: 3px solid var(--akzent); }
+  .quelle { color: var(--leise); font-size: .9rem; margin: 0 0 10px; }
+  details.grundlagen { font-size: .85rem; color: var(--leise); margin: 0 0 10px; padding: 6px 12px; background: var(--gruppe); border-left: 3px solid var(--akzent); }
+  details.grundlagen summary { cursor: pointer; color: var(--text); font-weight: 600; }
   .grundlagen ul { margin: 4px 0 0; padding-left: 18px; }
-  .leiste { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px; }
+  .grundlagen table { width: auto; font-size: .8rem; margin: 6px 0; }
+  .grundlagen th { cursor: default; }
+  .leiste { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; margin-bottom: 10px; }
   .leiste input[type=search] { padding: 6px 8px; min-width: 220px; flex: 1 1 220px; max-width: 360px; }
-  .leiste select { padding: 6px 8px; }
-  .ablage { border: 2px dashed var(--rand); border-radius: 6px; padding: 10px 14px; color: var(--leise); font-size: .9rem; margin-bottom: 12px; }
+  .leiste select, .leiste button { padding: 6px 10px; }
+  .ablage { border: 2px dashed var(--rand); border-radius: 6px; padding: 8px 14px; color: var(--leise); font-size: .9rem; margin-bottom: 10px; }
   .ablage.aktiv { border-color: var(--akzent); color: var(--akzent); }
-  .info { color: var(--leise); font-size: .9rem; margin-bottom: 8px; }
+  .info { color: var(--leise); font-size: .9rem; margin-bottom: 6px; }
   .fehler { color: var(--offen); font-weight: 600; }
-  .rahmen { overflow-x: auto; }
-  table { border-collapse: collapse; width: 100%; font-size: .95rem; }
-  th, td { border: 1px solid var(--rand); padding: 6px 8px; text-align: left; vertical-align: top; }
-  th { background: var(--kopf); cursor: pointer; user-select: none; white-space: nowrap; }
+  .rahmen { overflow: auto; max-height: calc(100vh - 80px); border: 1px solid var(--rand); }
+  table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 1350px; font-size: .9rem; }
+  th, td { border-right: 1px solid var(--rand); border-bottom: 1px solid var(--rand); padding: 5px 7px; text-align: left; vertical-align: top; }
+  thead th { background: var(--kopf); cursor: pointer; user-select: none; position: sticky; top: 0; z-index: 2; white-space: normal; vertical-align: bottom; }
   th.neu { background: #e3ecf7; }
+  th.co2 { background: #e2f1e6; }
   th .pfeil { color: var(--akzent); margin-left: 4px; }
   td.zahl, th.zahl { text-align: right; }
   td.zahl { font-variant-numeric: tabular-nums; white-space: nowrap; }
   td.pos { white-space: nowrap; }
-  td .weg { display: block; font-size: .78rem; color: var(--leise); margin-top: 2px; }
-  td .weg.annahme { color: var(--annahme); }
+  td.kurztext { min-width: 260px; }
+  td.material { min-width: 240px; }
+  table.ohneweg td .weg:not(.offen) { display: none; }
+  td.kat { white-space: nowrap; }
+  tbody td[data-c] { cursor: text; }
+  tbody td[data-c]:hover { outline: 1px dashed var(--akzent); outline-offset: -2px; }
+  td.manuell { background: #f5effb; }
+  td input.edit, td select.edit { width: 100%; min-width: 80px; font: inherit; padding: 2px 4px; }
+  td .weg { display: block; font-size: .76rem; color: var(--leise); margin-top: 2px; }
   td .weg.offen { color: var(--offen); }
-  .marke { font-size: .75rem; padding: 0 4px; border-radius: 3px; margin-left: 4px; white-space: nowrap; }
+  .marke { font-size: .72rem; padding: 0 4px; border-radius: 3px; margin-left: 4px; white-space: nowrap; }
   .marke.annahme { background: #fff3d6; color: var(--annahme); }
   .marke.interpretation { background: #e6eefb; color: var(--akzent); }
+  .marke.manuell { background: #efe4f8; color: var(--manuell); }
   .offenwert { color: var(--offen); font-size: .85rem; }
   .nichtbil { color: var(--leise); font-style: italic; }
-  tr.gruppe td { background: var(--gruppe); font-weight: 600; }
-  tbody tr:not(.gruppe):hover td { background: #fafbfc; }
+  .neg { color: #1b7a3a; }
+  tr.gruppe td { background: var(--gruppe); font-weight: 600; cursor: default; }
+  tr.gesamt td { background: #dfe6ee; font-weight: 700; border-top: 2px solid #8895a5; }
+  tbody tr:not(.gruppe):not(.gesamt):hover td:not(.manuell) { background: #fafbfc; }
 </style>
 </head>
 <body>
-<h1>Mengenliste</h1>
+<h1>Mengenliste und Ökobilanz</h1>
 <p class="quelle" id="quelle">Lade …</p>
 
-<div class="grundlagen" id="grundlagen" hidden>
-  <strong>Grundlagen der Spalten Material, Volumen, Tonnage</strong> (automatisch aus dem Kurztext abgeleitet, bitte prüfen)
+<details class="grundlagen" id="grundlagen" hidden>
+  <summary>Grundlagen und Kennzeichnungen (bitte prüfen)</summary>
   <ul>
-    <li>Rohdichten Beton und Holz: <code>daten/gemeinsam/faktoren_oekobaudat.csv</code>, Spalte kg_je_deklarierte_einheit (je m³). Bei Stahlbeton nur Beton, die Bewehrung steht in eigenen Positionen.</li>
+    <li>Material, Volumen und Tonnage werden automatisch aus dem Kurztext abgeleitet. Der Rechenweg steht unter dem Material.</li>
+    <li>Rohdichten Beton und Holz: <code>daten/gemeinsam/faktoren_oekobaudat.csv</code> (kg_je_deklarierte_einheit je m³). Bei Stahlbeton zählt nur der Beton, die Bewehrung steht in eigenen Positionen.</li>
     <li>Metergewichte Stahlprofile: <code>daten/gemeinsam/profile.csv</code>.</li>
-    <li><span class="marke annahme">Annahme</span> Dichte Baustahl und Betonstahl 7850 kg/m³ (nicht in den Daten enthalten).</li>
-    <li><span class="marke interpretation">Interpretation</span> fachliche Deutung des Texts, z. B. „Stahlbeton“ bei tragenden Bauteilen ohne ausdrückliche Angabe.</li>
-    <li><span class="offenwert">offen</span> Angaben fehlen; es wird nicht geschätzt. Grund steht unter dem Material.</li>
+    <li>Ökobilanz: Bezugsmenge × GWP-Faktor der EPD. Bezugsmenge ist das Volumen (Beton, Holz: kgCO2e je m³) oder die Tonnage (Stahl: kgCO2e je kg). Ergebnis in t CO2e.</li>
+    <li>Summe A–C = A1–A3 + C3 + C4. Modul D (Gutschriften außerhalb der Systemgrenze) ist getrennt ausgewiesen und nicht in der Summe enthalten.</li>
+    <li>Holz: A1–A3 ist negativ (biogener Kohlenstoff), C3 enthält die Freisetzung am Lebensende. Nur A1–A3 allein ist bei Holz nicht aussagekräftig.</li>
+    <li><span class="marke annahme">Annahme</span> Dichte Baustahl und Betonstahl 7850 kg/m³ (nicht in den Daten).
+      STAHL_PROFIL: In der CSV steht als deklarierte Einheit „1000 kg“, als Bezug aber „kgCO2e je kg“. Verwendet wird <strong>je kg</strong>.</li>
+    <li><span class="marke interpretation">Interpretation</span> fachliche Deutung, z. B. „Stahlbeton“ bei tragenden Bauteilen, Rundstahl und Kleinteile als STAHL_PROFIL.</li>
+    <li><span class="marke manuell">manuell</span> von Hand geändert. Jede Zelle lässt sich anklicken. Ein leer gelassenes Feld bei Material, Volumen, Tonnage oder EPD stellt die automatische Ermittlung wieder her. Änderungen werden in diesem Browser gespeichert.</li>
+    <li><span class="offenwert">offen</span> Angaben oder EPD fehlen. Es wird nicht geschätzt, der Grund steht unter dem Material. Offene Positionen fehlen in den Summen.</li>
   </ul>
-</div>
+  <div id="epdTabelle"></div>
+</details>
 
 <div class="ablage" id="ablage">
   Andere Excel-Datei öffnen: hierher ziehen oder <input type="file" id="datei" accept=".xlsx,.xls,.xlsm">
@@ -62,11 +83,14 @@
 <div class="leiste">
   <input type="search" id="suche" placeholder="Suche in Pos., Kurztext und Material …">
   <label>Einheit: <select id="einheit"><option value="">alle</option></select></label>
-  <label><input type="checkbox" id="gruppieren" checked> nach Titel gruppieren</label>
+  <label><input type="checkbox" id="gruppieren" checked> nach Titel gruppieren (mit Summen)</label>
+  <label><input type="checkbox" id="rechenweg"> Rechenweg anzeigen</label>
+  <button id="export" type="button">Als Excel exportieren</button>
+  <button id="verwerfen" type="button">Manuelle Änderungen verwerfen</button>
 </div>
 
 <div class="info" id="info"></div>
-<div class="rahmen"><table id="tabelle"><thead></thead><tbody></tbody></table></div>
+<div class="rahmen"><table id="tabelle" class="ohneweg"><thead></thead><tbody></tbody></table></div>
 
 <script>
 (function () {
@@ -76,17 +100,23 @@
   var DICHTE_STAHL = 7850; // Annahme, kg/m³ (nicht in den Daten)
 
   var el = function (id) { return document.getElementById(id); };
-  var zustand = { kopf: [], zeilen: [], sortSpalte: -1, sortAuf: true, zahlSpalten: {}, neuAb: -1 };
-  var ref = { dichte: {}, profile: {} }; // dichte[kategorie] = kg/m³, profile['HEB 200'] = kg/m
+  var ref = { dichte: {}, profile: {}, epd: {}, epdListe: [] };
 
   function esc(s) {
     return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; });
   }
   function zeigeFehler(text) { el('info').innerHTML = '<span class="fehler">Fehler: ' + esc(text) + '</span>'; }
 
-  var zahlFormat = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 3 });
   var f = function (x, n) { return new Intl.NumberFormat('de-DE', { maximumFractionDigits: n === undefined ? 3 : n }).format(x); };
   var zahl = function (s) { return parseFloat(String(s).replace(',', '.')); };
+  // Eingabe im deutschen Format: "1.234,5" oder "1234.5"
+  function leseEingabeZahl(s) {
+    s = String(s).trim().replace(/\s/g, '');
+    if (s === '') return '';
+    if (s.indexOf(',') >= 0) s = s.replace(/\./g, '').replace(',', '.');
+    var x = parseFloat(s);
+    return isNaN(x) ? NaN : x;
+  }
 
   // ---------- Referenzdaten (CSV, Semikolon, Dezimalkomma) ----------
   function leseCsv(text) {
@@ -103,9 +133,25 @@
     return Promise.all([holen(FAKTOREN_DATEI), holen(PROFILE_DATEI)]).then(function (t) {
       leseCsv(t[0]).forEach(function (r) {
         if (/m3/.test(r.deklarierte_einheit)) ref.dichte[r.kategorie] = zahl(r.kg_je_deklarierte_einheit);
+        var bezug = /je\s*m3/i.test(r.gwp_bezug) ? 'm3' : /je\s*kg/i.test(r.gwp_bezug) ? 'kg' : '';
+        ref.epd[r.kategorie] = {
+          kategorie: r.kategorie, name: r.oekobaudat_name, uuid: r.oekobaudat_uuid, version: r.version,
+          bezug: bezug, a13: zahl(r['A1-A3']), c3: zahl(r.C3), c4: zahl(r.C4), d: zahl(r.D)
+        };
+        ref.epdListe.push(r.kategorie);
       });
       leseCsv(t[1]).forEach(function (r) { ref.profile[r.profil.toUpperCase()] = zahl(r.g_kg_je_m); });
+      zeigeEpdTabelle();
     });
+  }
+  function zeigeEpdTabelle() {
+    var h = '<table><thead><tr><th>Kategorie</th><th>ÖKOBAUDAT-Datensatz</th><th>Version</th><th>Bezug</th><th class="zahl">A1–A3</th><th class="zahl">C3</th><th class="zahl">C4</th><th class="zahl">D</th></tr></thead><tbody>';
+    ref.epdListe.forEach(function (k) {
+      var e = ref.epd[k];
+      h += '<tr><td>' + esc(k) + '</td><td title="UUID ' + esc(e.uuid) + '">' + esc(e.name) + '</td><td>' + esc(e.version) + '</td><td>kgCO2e je ' + (e.bezug === 'm3' ? 'm³' : e.bezug) + '</td>' +
+        [e.a13, e.c3, e.c4, e.d].map(function (x) { return '<td class="zahl">' + f(x) + '</td>'; }).join('') + '</tr>';
+    });
+    el('epdTabelle').innerHTML = h + '</tbody></table>';
   }
 
   // ---------- Auswertung des Kurztexts ----------
@@ -284,6 +330,111 @@
     return r;
   }
 
+
+  // ---------- EPD-Kategorie aus dem Material ----------
+  function katAusMaterial(material) {
+    var t = String(material), m;
+    if (/^nicht bilanziert/.test(t)) return { kat: '', grund: 'nicht bilanziert' };
+    if (/^Betonstahl/.test(t)) return { kat: 'BETONSTAHL' };
+    if (/^Baustahl/.test(t)) return { kat: 'STAHL_PROFIL', interp: /\((Rundstahl|Kleinteile|Trapezblech|Profil)\)/.test(t) };
+    if (/Brettsperrholz/.test(t)) return { kat: 'BSP' };
+    if (/Brettschichtholz/.test(t)) return { kat: 'BSH' };
+    if (/Nadelholz|KVH|Vollholz/.test(t)) return { kat: 'VOLLHOLZ' };
+    if (/Spannbeton/.test(t)) return { kat: '', grund: 'keine EPD für Spannbeton-Hohldielen in faktoren_oekobaudat.csv' };
+    if (/beton/i.test(t)) {
+      if ((m = t.match(/C\s?(\d{2})\/(\d{2})/))) {
+        var k = 'BETON_C' + m[1] + '_' + m[2];
+        return ref.epd[k] ? { kat: k } : { kat: '', grund: 'keine EPD für C' + m[1] + '/' + m[2] + ' in faktoren_oekobaudat.csv' };
+      }
+      return { kat: '', grund: 'Festigkeitsklasse fehlt, keine EPD zuordenbar' };
+    }
+    if (/mauerwerk/i.test(t)) return { kat: '', grund: 'keine EPD für Mauerwerk in faktoren_oekobaudat.csv' };
+    return { kat: '', grund: 'keine passende EPD' };
+  }
+
+  // ---------- Tabellenmodell ----------
+  var CO2 = [
+    { key: 'a13', name: 'A1–A3 [t CO2e]' },
+    { key: 'c3', name: 'C3 [t CO2e]' },
+    { key: 'c4', name: 'C4 [t CO2e]' },
+    { key: 'summe', name: 'Summe A–C [t CO2e]' },
+    { key: 'd', name: 'D [t CO2e] (separat)' }
+  ];
+  var zustand = { name: '', kopf: [], spalten: [], zeilen: [], sortSpalte: -1, sortAuf: true, erweitert: false, co2Start: -1, idx: {} };
+
+  function speicherSchluessel() { return 'mengenliste-aenderungen:' + zustand.name; }
+  function speichern() {
+    var daten = {};
+    zustand.zeilen.forEach(function (z) {
+      var b = {};
+      z.basis.forEach(function (v, i) { if (v !== z.orig[i]) b[i] = v; });
+      if (Object.keys(b).length || Object.keys(z.ov).length) daten[z.excelZeile] = { b: b, ov: z.ov };
+    });
+    try { localStorage.setItem(speicherSchluessel(), JSON.stringify(daten)); } catch (e) { /* Speicher nicht verfügbar */ }
+  }
+  function ladeGespeichert() {
+    var daten = {};
+    try { daten = JSON.parse(localStorage.getItem(speicherSchluessel()) || '{}') || {}; } catch (e) { daten = {}; }
+    zustand.zeilen.forEach(function (z) {
+      var d = daten[z.excelZeile]; if (!d) return;
+      Object.keys(d.b || {}).forEach(function (i) { if (+i < z.basis.length) z.basis[+i] = d.b[i]; });
+      z.ov = d.ov || {};
+    });
+  }
+
+  function berechne(z) {
+    if (!zustand.erweitert) return;
+    var I = zustand.idx, ov = z.ov;
+    var menge = typeof z.basis[I.menge] === 'number' ? z.basis[I.menge] : leseEingabeZahl(z.basis[I.menge]);
+    var a = auswerten(z.basis[I.text], menge, z.basis[I.einheit]);
+    var w = { material: a.material, volumen: a.volumen, tonnage: a.tonnage, kat: '', a13: '', c3: '', c4: '', summe: '', d: '' };
+    var hinweise = [], offenCo2 = '';
+
+    if (ov.material !== undefined) w.material = ov.material;
+    var ka = katAusMaterial(w.material);
+    w.kat = ov.kat !== undefined ? ov.kat : ka.kat;
+    var katGrund = ov.kat !== undefined ? (ov.kat ? '' : 'EPD manuell entfernt') : (ka.grund || '');
+
+    if (ov.volumen !== undefined) w.volumen = ov.volumen;
+    if (ov.tonnage !== undefined) w.tonnage = ov.tonnage;
+    var stahl = w.kat === 'STAHL_PROFIL' || w.kat === 'BETONSTAHL';
+    if (ov.volumen !== undefined && ov.tonnage === undefined) {
+      var rho = stahl ? DICHTE_STAHL : ref.dichte[w.kat];
+      if (rho) { w.tonnage = w.volumen * rho / 1000; hinweise.push('Tonnage aus manuellem Volumen × ' + f(rho, 1) + ' kg/m³ = ' + f(w.tonnage) + ' t'); }
+      else { w.tonnage = ''; hinweise.push('Tonnage: keine Rohdichte für manuelles Volumen'); }
+    }
+    if (ov.tonnage !== undefined && ov.volumen === undefined) {
+      var rho2 = stahl ? DICHTE_STAHL : ref.dichte[w.kat];
+      if (rho2) { w.volumen = w.tonnage * 1000 / rho2; hinweise.push('Volumen aus manueller Tonnage / ' + f(rho2, 1) + ' kg/m³ = ' + f(w.volumen) + ' m³'); }
+      else { w.volumen = ''; }
+    }
+
+    var manuell = Object.keys(ov).length > 0;
+    var nicht = a.nicht && !manuell;
+
+    // Ökobilanz: Bezugsmenge × Faktor (kgCO2e) / 1000 = t CO2e
+    if (!nicht) {
+      var epd = w.kat ? ref.epd[w.kat] : null;
+      if (!epd) offenCo2 = katGrund || 'keine EPD zugeordnet';
+      else {
+        var bezug = '', bezugText = '';
+        if (epd.bezug === 'm3') {
+          if (w.volumen === '') offenCo2 = 'Volumen fehlt';
+          else { bezug = w.volumen; bezugText = f(w.volumen) + ' m³'; }
+        } else if (epd.bezug === 'kg') {
+          if (w.tonnage === '') offenCo2 = 'Tonnage fehlt';
+          else { bezug = w.tonnage * 1000; bezugText = f(bezug, 1) + ' kg'; }
+        } else offenCo2 = 'Bezugseinheit der EPD unklar';
+        if (bezug !== '') {
+          w.a13 = bezug * epd.a13 / 1000; w.c3 = bezug * epd.c3 / 1000; w.c4 = bezug * epd.c4 / 1000;
+          w.summe = w.a13 + w.c3 + w.c4; w.d = bezug * epd.d / 1000;
+          hinweise.push('Ökobilanz: ' + bezugText + ' × EPD ' + w.kat + ' (A1–A3 ' + f(epd.a13) + ' kgCO2e je ' + (epd.bezug === 'm3' ? 'm³' : 'kg') + ')');
+        }
+      }
+    }
+    z.a = a; z.w = w; z.hinweise = hinweise; z.offenCo2 = offenCo2; z.nicht = nicht; z.katInterp = ov.kat === undefined && ka.interp;
+  }
+
   // ---------- Excel einlesen ----------
   function verarbeite(buf, name) {
     var wb = XLSX.read(buf, { type: 'array' });
@@ -300,129 +451,276 @@
     while (kopf.length && kopf[kopf.length - 1] === '') kopf.pop();
 
     var zeilen = alle.slice(kopfIdx + 1)
-      .map(function (z, j) { return { excelZeile: kopfIdx + 2 + j, werte: kopf.map(function (_, s) { return z[s] === undefined ? '' : z[s]; }) }; })
-      .filter(function (z) { return z.werte.some(function (c) { return c !== '' && c !== null; }); });
+      .map(function (z, j) {
+        var werte = kopf.map(function (_, s) { return z[s] === undefined ? '' : z[s]; });
+        return { excelZeile: kopfIdx + 2 + j, orig: werte.slice(), basis: werte.slice(), ov: {} };
+      })
+      .filter(function (z) { return z.orig.some(function (c) { return c !== '' && c !== null; }); });
 
-    zustand = { kopf: kopf, zeilen: zeilen, sortSpalte: -1, sortAuf: true, zahlSpalten: {}, neuAb: -1 };
+    var finde = function (n) { for (var i = 0; i < kopf.length; i++) if (kopf[i].toLowerCase().indexOf(n) === 0) return i; return -1; };
+    var idx = { pos: finde('pos'), text: finde('kurztext'), menge: finde('menge'), einheit: finde('einheit') };
 
-    // Auswertung nur, wenn Kurztext, Menge und Einheit vorhanden sind
-    var tS = spalte('kurztext'), mS = spalte('menge'), eS = spalte('einheit');
-    if (tS >= 0 && mS >= 0 && eS >= 0) {
-      zustand.neuAb = kopf.length;
-      kopf.push('Material', 'Volumen [m³]', 'Tonnage [t]');
-      zeilen.forEach(function (z) {
-        var menge = typeof z.werte[mS] === 'number' ? z.werte[mS] : zahl(z.werte[mS]);
-        var a = auswerten(z.werte[tS], menge, z.werte[eS]);
-        z.auswertung = a;
-        z.werte.push(a.material, a.volumen, a.tonnage);
-      });
-      el('grundlagen').hidden = false;
-    } else el('grundlagen').hidden = true;
-
-    kopf.forEach(function (_, s) {
-      var werte = zeilen.map(function (z) { return z.werte[s]; }).filter(function (v) { return v !== ''; });
-      zustand.zahlSpalten[s] = werte.length > 0 && werte.every(function (v) { return typeof v === 'number'; });
+    var spalten = kopf.map(function (k, i) {
+      var werte = zeilen.map(function (z) { return z.orig[i]; }).filter(function (v) { return v !== ''; });
+      var istZahl = werte.length > 0 && werte.every(function (v) { return typeof v === 'number'; });
+      return { typ: 'basis', i: i, name: k, zahl: istZahl, klasse: i === idx.pos ? 'pos' : i === idx.text ? 'kurztext' : '' };
     });
+    var erweitert = idx.text >= 0 && idx.menge >= 0 && idx.einheit >= 0;
+    var co2Start = -1;
+    if (erweitert) {
+      spalten.push({ typ: 'neu', key: 'material', name: 'Material', klasse: 'material' });
+      spalten.push({ typ: 'neu', key: 'volumen', name: 'Volumen [m³]', zahl: true });
+      spalten.push({ typ: 'neu', key: 'tonnage', name: 'Tonnage [t]', zahl: true });
+      spalten.push({ typ: 'neu', key: 'kat', name: 'EPD-Kategorie', klasse: 'kat' });
+      co2Start = spalten.length;
+      CO2.forEach(function (c) { spalten.push({ typ: 'co2', key: c.key, name: c.name, zahl: true }); });
+    }
+
+    zustand = { name: name, kopf: kopf, spalten: spalten, zeilen: zeilen, sortSpalte: -1, sortAuf: true, erweitert: erweitert, co2Start: co2Start, idx: idx, blatt: blatt };
+    ladeGespeichert();
+    zeilen.forEach(berechne);
+    el('grundlagen').hidden = !erweitert;
 
     el('quelle').textContent = 'Quelle: ' + name + ', Blatt „' + blatt + '“, Kopfzeile in Zeile ' + (kopfIdx + 1) + ', Daten ab Zeile ' + (kopfIdx + 2);
-
-    var sel = el('einheit');
-    sel.innerHTML = '<option value="">alle</option>';
-    if (eS >= 0) {
-      var einheiten = {};
-      zeilen.forEach(function (z) { var x = String(z.werte[eS]); if (x) einheiten[x] = true; });
-      Object.keys(einheiten).sort().forEach(function (x) {
-        var o = document.createElement('option'); o.value = x; o.textContent = x; sel.appendChild(o);
-      });
-      sel.disabled = false;
-    } else sel.disabled = true;
+    fuelleEinheiten();
     el('suche').value = '';
     zeichne();
   }
 
-  function spalte(name) {
-    for (var i = 0; i < zustand.kopf.length; i++) if (zustand.kopf[i].toLowerCase().indexOf(name) === 0) return i;
-    return -1;
+  function fuelleEinheiten() {
+    var sel = el('einheit'), alt = sel.value, eS = zustand.idx.einheit;
+    sel.innerHTML = '<option value="">alle</option>';
+    if (eS < 0) { sel.disabled = true; return; }
+    var einheiten = {};
+    zustand.zeilen.forEach(function (z) { var x = String(z.basis[eS]); if (x) einheiten[x] = true; });
+    Object.keys(einheiten).sort().forEach(function (x) {
+      var o = document.createElement('option'); o.value = x; o.textContent = x; sel.appendChild(o);
+    });
+    sel.value = einheiten[alt] ? alt : '';
+    sel.disabled = false;
   }
 
-  function vergleiche(a, b, s) {
-    var x = a.werte[s], y = b.werte[s];
-    if (zustand.zahlSpalten[s]) { x = x === '' ? -Infinity : x; y = y === '' ? -Infinity : y; return x - y; }
+  // ---------- Darstellung ----------
+  function wert(z, c) {
+    var sp = zustand.spalten[c];
+    return sp.typ === 'basis' ? z.basis[sp.i] : z.w[sp.key];
+  }
+  function vergleiche(a, b, c) {
+    var x = wert(a, c), y = wert(b, c);
+    if (zustand.spalten[c].zahl) { x = typeof x === 'number' ? x : -Infinity; y = typeof y === 'number' ? y : -Infinity; return x - y; }
     return String(x).localeCompare(String(y), 'de', { numeric: true, sensitivity: 'base' });
   }
-
   function titel(z) {
-    var p = String(z.werte[spalte('pos')]), i = p.indexOf('.');
+    var p = String(z.basis[zustand.idx.pos]), i = p.indexOf('.');
     return i > 0 ? p.slice(0, i) : p;
   }
+  function zahlZelle(v, n, extra) {
+    return '<td class="zahl' + (extra || '') + (typeof v === 'number' && v < 0 ? ' neg' : '') + '">' + (v === '' ? '' : f(v, n)) + '</td>';
+  }
 
-  function zelle(z, i) {
-    var v = z.werte[i], a = z.auswertung, neu = zustand.neuAb;
-    if (a && i >= neu) {
-      if (i === neu) {
-        var marken = (a.marken.annahme ? '<span class="marke annahme">Annahme</span>' : '') +
-                     (a.marken.interpretation ? '<span class="marke interpretation">Interpretation</span>' : '');
-        var wege = '';
-        a.wegV.concat(a.wegT).forEach(function (w) { wege += '<span class="weg' + (a.nicht ? '' : '') + '">' + esc(w) + '</span>'; });
-        var offen = {};
-        if (a.offenV) offen[a.offenV] = 1;
-        if (a.offenT) offen[a.offenT] = 1;
-        Object.keys(offen).forEach(function (w) { wege += '<span class="weg offen">offen: ' + esc(w) + '</span>'; });
-        return '<td' + (a.nicht ? ' class="nichtbil"' : '') + '>' + esc(v) + marken + wege + '</td>';
-      }
-      if (v === '') {
-        if (a.nicht) return '<td class="zahl nichtbil">–</td>';
-        var grund = i === neu + 1 ? a.offenV : a.offenT;
-        return '<td class="zahl"><span class="offenwert" title="' + esc(grund) + '">offen</span></td>';
-      }
+  function zelle(z, r, c) {
+    var sp = zustand.spalten[c], da = ' data-r="' + r + '" data-c="' + c + '"';
+    if (sp.typ === 'basis') {
+      var v = z.basis[sp.i], man = v !== z.orig[sp.i];
+      var kl = [sp.klasse, sp.zahl ? 'zahl' : '', man ? 'manuell' : ''].filter(Boolean).join(' ');
+      var inhalt = sp.zahl && typeof v === 'number' ? f(v) : esc(v);
+      return '<td' + da + (kl ? ' class="' + kl + '"' : '') + (man ? ' title="Original: ' + esc(z.orig[sp.i]) + '"' : '') + '>' + inhalt + '</td>';
     }
-    if (zustand.zahlSpalten[i]) return '<td class="zahl">' + (v === '' ? '' : zahlFormat.format(v)) + '</td>';
-    return '<td' + (i === spalte('pos') ? ' class="pos"' : '') + '>' + esc(v) + '</td>';
+    var w = z.w, a = z.a, ov = z.ov;
+    if (sp.key === 'material') {
+      var marken = (a.marken.annahme ? '<span class="marke annahme">Annahme</span>' : '') +
+                   (a.marken.interpretation ? '<span class="marke interpretation">Interpretation</span>' : '') +
+                   (ov.material !== undefined ? '<span class="marke manuell">manuell</span>' : '');
+      var wege = '';
+      if (ov.volumen === undefined && ov.tonnage === undefined) a.wegV.concat(a.wegT).forEach(function (x) { wege += '<span class="weg">' + esc(x) + '</span>'; });
+      z.hinweise.forEach(function (x) { wege += '<span class="weg">' + esc(x) + '</span>'; });
+      var offen = {};
+      if (w.volumen === '' && a.offenV && !z.nicht) offen[a.offenV] = 1;
+      if (w.tonnage === '' && a.offenT && !z.nicht) offen[a.offenT] = 1;
+      if (z.offenCo2) offen['Ökobilanz: ' + z.offenCo2] = 1;
+      Object.keys(offen).forEach(function (x) { wege += '<span class="weg offen">offen: ' + esc(x) + '</span>'; });
+      var kl2 = ['material', z.nicht ? 'nichtbil' : '', ov.material !== undefined ? 'manuell' : ''].filter(Boolean).join(' ');
+      return '<td' + da + ' class="' + kl2 + '">' + esc(w.material) + marken + wege + '</td>';
+    }
+    if (sp.key === 'kat') {
+      var kk = ['kat', ov.kat !== undefined ? 'manuell' : ''].filter(Boolean).join(' ');
+      if (z.nicht) return '<td' + da + ' class="' + kk + ' nichtbil">–</td>';
+      if (!w.kat) return '<td' + da + ' class="' + kk + '"><span class="offenwert">offen</span></td>';
+      return '<td' + da + ' class="' + kk + '">' + esc(w.kat) + (z.katInterp ? '<span class="marke interpretation">Interpretation</span>' : '') + (ov.kat !== undefined ? '<span class="marke manuell">manuell</span>' : '') + '</td>';
+    }
+    var v2 = w[sp.key];
+    var editierbar = sp.typ === 'neu';
+    var man2 = editierbar && ov[sp.key] !== undefined;
+    var att = (editierbar ? da : '');
+    if (v2 === '') {
+      if (z.nicht) return '<td' + att + ' class="zahl nichtbil">–</td>';
+      var grund = sp.typ === 'co2' ? z.offenCo2 : sp.key === 'volumen' ? a.offenV : a.offenT;
+      return '<td' + att + ' class="zahl' + (man2 ? ' manuell' : '') + '"><span class="offenwert" title="' + esc(grund || '') + '">offen</span></td>';
+    }
+    var n = sp.typ === 'co2' ? 2 : 3;
+    return '<td' + att + ' class="zahl' + (man2 ? ' manuell' : '') + (v2 < 0 ? ' neg' : '') + '">' + f(v2, n) + '</td>';
+  }
+
+  function summenZeile(zeilen, beschriftung, klasse) {
+    var sp = zustand.spalten;
+    if (!zustand.erweitert) return '<tr class="' + klasse + '"><td colspan="' + sp.length + '">' + esc(beschriftung) + '</td></tr>';
+    var s = {}, offen = 0, nicht = 0;
+    CO2.forEach(function (c) { s[c.key] = 0; });
+    zeilen.forEach(function (z) {
+      if (z.nicht) { nicht++; return; }
+      if (z.w.summe === '') { offen++; return; }
+      CO2.forEach(function (c) { s[c.key] += z.w[c.key]; });
+    });
+    var text = beschriftung + ' – ' + zeilen.length + ' Pos.' + (offen ? ', ' + offen + ' offen (nicht in Summe)' : '') + (nicht ? ', ' + nicht + ' nicht bilanziert' : '');
+    return '<tr class="' + klasse + '"><td colspan="' + zustand.co2Start + '">' + esc(text) + '</td>' +
+      CO2.map(function (c) { return zahlZelle(s[c.key], 2); }).join('') + '</tr>';
   }
 
   function zeichne() {
-    var kopf = zustand.kopf;
-    var posS = spalte('pos'), textS = spalte('kurztext'), einhS = spalte('einheit'), matS = spalte('material');
+    var sp = zustand.spalten, I = zustand.idx;
     var suche = el('suche').value.trim().toLowerCase();
     var einheit = el('einheit').value;
-    var gruppieren = el('gruppieren').checked && posS >= 0;
+    var gruppieren = el('gruppieren').checked && I.pos >= 0;
 
-    var zeilen = zustand.zeilen.filter(function (z) {
-      if (einheit && String(z.werte[einhS]) !== einheit) return false;
+    var zeilen = zustand.zeilen.map(function (z, r) { z.r = r; return z; }).filter(function (z) {
+      if (einheit && String(z.basis[I.einheit]) !== einheit) return false;
       if (!suche) return true;
-      var t = [posS, textS, matS].filter(function (s) { return s >= 0; }).map(function (s) { return z.werte[s]; }).join(' ');
-      if (textS < 0) t = z.werte.join(' ');
+      var t = I.text >= 0 ? [z.basis[I.pos], z.basis[I.text], z.w ? z.w.material : ''].join(' ') : z.basis.join(' ');
       return t.toLowerCase().indexOf(suche) >= 0;
     });
 
     var s = zustand.sortSpalte;
-    if (s >= 0) zeilen.sort(function (a, b) { var r = vergleiche(a, b, s); return zustand.sortAuf ? r : -r; });
+    if (s >= 0) zeilen.sort(function (a, b) { var x = vergleiche(a, b, s); return zustand.sortAuf ? x : -x; });
     if (gruppieren) {
       zeilen = zeilen.map(function (z, i) { return { z: z, i: i }; })
         .sort(function (a, b) { return titel(a.z).localeCompare(titel(b.z), 'de', { numeric: true }) || a.i - b.i; })
         .map(function (o) { return o.z; });
     }
 
-    el('tabelle').tHead.innerHTML = '<tr>' + kopf.map(function (k, i) {
+    el('tabelle').tHead.innerHTML = '<tr>' + sp.map(function (k, i) {
       var pfeil = i === s ? '<span class="pfeil">' + (zustand.sortAuf ? '▲' : '▼') + '</span>' : '';
-      var kl = [zustand.zahlSpalten[i] || (zustand.neuAb >= 0 && i > zustand.neuAb) ? 'zahl' : '', zustand.neuAb >= 0 && i >= zustand.neuAb ? 'neu' : ''].join(' ').trim();
-      return '<th data-s="' + i + '"' + (kl ? ' class="' + kl + '"' : '') + ' title="Klicken zum Sortieren">' + esc(k) + pfeil + '</th>';
+      var kl = [k.zahl ? 'zahl' : '', k.typ === 'neu' ? 'neu' : '', k.typ === 'co2' ? 'co2' : ''].filter(Boolean).join(' ');
+      return '<th data-s="' + i + '"' + (kl ? ' class="' + kl + '"' : '') + ' title="Klicken zum Sortieren">' + esc(k.name) + pfeil + '</th>';
     }).join('') + '</tr>';
 
-    var html = '', letzter = null;
-    zeilen.forEach(function (z) {
+    var html = '', i = 0;
+    while (i < zeilen.length) {
+      var j = i + 1;
       if (gruppieren) {
-        var t = titel(z);
-        if (t !== letzter) {
-          var anzahl = zeilen.filter(function (y) { return titel(y) === t; }).length;
-          html += '<tr class="gruppe"><td colspan="' + kopf.length + '">Titel ' + esc(t) + ' (' + anzahl + ' Pos.)</td></tr>';
-          letzter = t;
-        }
+        while (j < zeilen.length && titel(zeilen[j]) === titel(zeilen[i])) j++;
+        html += summenZeile(zeilen.slice(i, j), 'Titel ' + titel(zeilen[i]), 'gruppe');
       }
-      html += '<tr title="Excel-Zeile ' + z.excelZeile + '">' + z.werte.map(function (_, i) { return zelle(z, i); }).join('') + '</tr>';
+      for (var k = i; k < j; k++) {
+        var z = zeilen[k];
+        html += '<tr title="Excel-Zeile ' + z.excelZeile + '">' + sp.map(function (_, c) { return zelle(z, z.r, c); }).join('') + '</tr>';
+      }
+      i = j;
+    }
+    if (zeilen.length && zustand.erweitert) html += summenZeile(zeilen, (suche || einheit ? 'Summe gefilterte Positionen' : 'Gesamtsumme'), 'gesamt');
+    el('tabelle').tBodies[0].innerHTML = html || '<tr><td colspan="' + sp.length + '">Keine Treffer.</td></tr>';
+
+    var manuell = zustand.zeilen.filter(function (z) { return Object.keys(z.ov).length || z.basis.some(function (v, i) { return v !== z.orig[i]; }); }).length;
+    el('info').textContent = zeilen.length + ' von ' + zustand.zeilen.length + ' Positionen angezeigt' + (manuell ? ' · ' + manuell + ' Position(en) manuell geändert' : '') + ' · Zelle anklicken zum Bearbeiten';
+    el('verwerfen').disabled = !manuell;
+  }
+
+  // ---------- Bearbeiten ----------
+  var aktiv = null;
+  function bearbeite(td) {
+    if (aktiv) return;
+    var r = +td.getAttribute('data-r'), c = +td.getAttribute('data-c');
+    var z = zustand.zeilen[r], sp = zustand.spalten[c];
+    var feld;
+    if (sp.key === 'kat') {
+      feld = document.createElement('select');
+      var auto = katAusMaterial(z.w.material).kat;
+      var opt = [['__auto', 'automatisch (' + (auto || 'keine') + ')'], ['', 'keine EPD']].concat(ref.epdListe.map(function (k) { return [k, k]; }));
+      opt.forEach(function (o) { var e = document.createElement('option'); e.value = o[0]; e.textContent = o[1]; feld.appendChild(e); });
+      feld.value = z.ov.kat === undefined ? '__auto' : z.ov.kat;
+    } else {
+      feld = document.createElement('input');
+      var v = sp.typ === 'basis' ? z.basis[sp.i] : (z.ov[sp.key] !== undefined ? z.ov[sp.key] : z.w[sp.key]);
+      feld.value = typeof v === 'number' ? String(v).replace('.', ',') : v;
+      if (sp.zahl) feld.inputMode = 'decimal';
+    }
+    feld.className = 'edit';
+    td.innerHTML = '';
+    td.appendChild(feld);
+    aktiv = { feld: feld, z: z, sp: sp };
+    feld.focus();
+    if (feld.select && feld.tagName === 'INPUT') feld.select();
+
+    var fertig = false;
+    function ende(uebernehmen) {
+      if (fertig) return; fertig = true;
+      if (uebernehmen && !uebernehme(z, sp, feld.value)) { fertig = false; feld.focus(); return; }
+      aktiv = null;
+      zeichne();
+    }
+    feld.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter') { ev.preventDefault(); ende(true); }
+      else if (ev.key === 'Escape') { ev.preventDefault(); ende(false); }
     });
-    el('tabelle').tBodies[0].innerHTML = html || '<tr><td colspan="' + kopf.length + '">Keine Treffer.</td></tr>';
-    el('info').textContent = zeilen.length + ' von ' + zustand.zeilen.length + ' Positionen angezeigt';
+    feld.addEventListener('blur', function () { ende(true); });
+    if (feld.tagName === 'SELECT') feld.addEventListener('change', function () { ende(true); });
+  }
+
+  function uebernehme(z, sp, eingabe) {
+    if (sp.typ === 'basis') {
+      var neu = eingabe;
+      if (sp.zahl) {
+        neu = leseEingabeZahl(eingabe);
+        if (neu === '') neu = '';
+        else if (isNaN(neu)) { alert('Bitte eine Zahl eingeben, z. B. 12,5'); return false; }
+      } else if (typeof z.orig[sp.i] === 'number' && String(z.orig[sp.i]) === eingabe) neu = z.orig[sp.i];
+      z.basis[sp.i] = neu;
+      if (sp.i === zustand.idx.einheit) fuelleEinheiten();
+    } else if (sp.key === 'kat') {
+      if (eingabe === '__auto') delete z.ov.kat; else z.ov.kat = eingabe;
+    } else if (sp.key === 'material') {
+      if (eingabe.trim() === '' || eingabe === z.a.material) delete z.ov.material; else z.ov.material = eingabe.trim();
+    } else {
+      var x = leseEingabeZahl(eingabe);
+      if (x === '') delete z.ov[sp.key];
+      else if (isNaN(x)) { alert('Bitte eine Zahl eingeben, z. B. 12,5'); return false; }
+      else if (z.ov[sp.key] === undefined && x === z.w[sp.key]) { /* unverändert */ }
+      else z.ov[sp.key] = x;
+    }
+    berechne(z);
+    speichern();
+    return true;
+  }
+
+  // ---------- Export ----------
+  function runde(x) { return Math.round(x * 1000) / 1000; }
+  function exportiere() {
+    var sp = zustand.spalten;
+    var aoa = [sp.map(function (s) { return s.name; })];
+    zustand.zeilen.forEach(function (z) {
+      aoa.push(sp.map(function (_, c) { var v = wert(z, c); return v === undefined ? '' : (typeof v === 'number' && zustand.spalten[c].typ !== 'basis' ? runde(v) : v); }));
+    });
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Positionen');
+    if (zustand.erweitert) {
+      var summen = [['Titel', 'Positionen', 'offen', 'nicht bilanziert'].concat(CO2.map(function (c) { return c.name; }))];
+      var gruppen = {}, reihenfolge = [];
+      zustand.zeilen.forEach(function (z) { var t = titel(z); if (!gruppen[t]) { gruppen[t] = []; reihenfolge.push(t); } gruppen[t].push(z); });
+      reihenfolge.sort(function (a, b) { return a.localeCompare(b, 'de', { numeric: true }); });
+      var gesamt = CO2.map(function () { return 0; }), gOffen = 0, gNicht = 0;
+      reihenfolge.forEach(function (t) {
+        var s = CO2.map(function () { return 0; }), offen = 0, nicht = 0;
+        gruppen[t].forEach(function (z) {
+          if (z.nicht) { nicht++; return; }
+          if (z.w.summe === '') { offen++; return; }
+          CO2.forEach(function (c, i) { s[i] += z.w[c.key]; gesamt[i] += z.w[c.key]; });
+        });
+        summen.push([t, gruppen[t].length, offen, nicht].concat(s.map(runde))); gOffen += offen; gNicht += nicht;
+      });
+      summen.push(['Gesamt', zustand.zeilen.length, gOffen, gNicht].concat(gesamt.map(runde)));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summen), 'Summen je Titel');
+    }
+    var basis = String(zustand.name).split('/').pop().replace(/\.[^.]+$/, '');
+    XLSX.writeFile(wb, basis + '_Oekobilanz.xlsx');
   }
 
   function ladeDatei(file) {
@@ -439,9 +737,20 @@
       if (zustand.sortSpalte === s) zustand.sortAuf = !zustand.sortAuf; else { zustand.sortSpalte = s; zustand.sortAuf = true; }
       zeichne();
     });
+    el('tabelle').tBodies[0].addEventListener('click', function (ev) {
+      if (ev.target.closest('.edit')) return;
+      var td = ev.target.closest("td[data-c]"); if (td && document.contains(td)) bearbeite(td);
+    });
     el('suche').addEventListener('input', zeichne);
     el('einheit').addEventListener('change', zeichne);
     el('gruppieren').addEventListener('change', zeichne);
+    el('rechenweg').addEventListener('change', function () { el('tabelle').classList.toggle('ohneweg', !this.checked); });
+    el('export').addEventListener('click', function () { try { exportiere(); } catch (e) { zeigeFehler(e.message); } });
+    el('verwerfen').addEventListener('click', function () {
+      if (!confirm('Alle manuellen Änderungen an dieser Datei verwerfen?')) return;
+      zustand.zeilen.forEach(function (z) { z.basis = z.orig.slice(); z.ov = {}; berechne(z); });
+      speichern(); fuelleEinheiten(); zeichne();
+    });
     el('datei').addEventListener('change', function () { if (this.files[0]) ladeDatei(this.files[0]); });
 
     var ablage = el('ablage');
@@ -453,7 +762,7 @@
     });
 
     ladeReferenzen()
-      .catch(function (e) { zeigeFehler('Referenzdaten nicht geladen (' + e.message + '). Tonnagen bleiben offen.'); })
+      .catch(function (e) { zeigeFehler('Referenzdaten nicht geladen (' + e.message + '). Tonnagen und Ökobilanz bleiben offen.'); })
       .then(function () { return fetch(STANDARD_DATEI); })
       .then(function (r) {
         if (!r.ok) throw new Error('HTTP ' + r.status + ' beim Laden von ' + STANDARD_DATEI);

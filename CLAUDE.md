@@ -36,3 +36,9 @@ Siehe daten/DATEN.md.
 - Stahlbeton-Tonnage nur Beton; Bewehrung steht in eigenen Positionen.
 - 07.02 Bewehrung Attika: 10,08 m³ × 120 kg/m³ aus dem Text (Interpretation).
 - Nicht raten: fehlende Angaben (Klasse, Dicke, Rohdichte Mauerwerk/C12/15, Hohldielen, Trapezblech, psch) bleiben „offen“ mit Grund.
+- Ökobilanz: Bezugsmenge × GWP-Faktor aus faktoren_oekobaudat.csv, Ergebnis in t CO2e. Spalten A1–A3, C3, C4, Summe A–C; D separat (nicht in Summe).
+- Bezugsmenge nach gwp_bezug: je m³ → Volumen, je kg → Tonnage.
+- STAHL_PROFIL: Widerspruch deklarierte Einheit „1000 kg“ vs. gwp_bezug „je kg“ → je kg verwendet, in der App als Hinweis.
+- Alle Baustahl-Positionen (auch Rundstahl, Kleinteile) → STAHL_PROFIL (Interpretation).
+- Summen je Titel in der Titelzeile, Gesamtsumme am Ende; offene Positionen nicht in der Summe, Anzahl wird angezeigt.
+- Alle Zellen bearbeitbar außer den CO2-Spalten (Hebel ist die EPD-Kategorie). Änderungen in localStorage je Datei, Export als Excel (Positionen + Summen je Titel).
