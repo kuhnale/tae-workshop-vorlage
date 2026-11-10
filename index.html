@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hallo Esslingen</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; background: #fff; color: #222; }
+  #status { font-size: 1.5rem; }
+  .fehler { color: #b00020; }
+</style>
+</head>
+<body>
+<h1 id="status">Lade …</h1>
+<p>Quelle: daten/mengenliste/Mengenliste_Beispielprojekt.xlsx, Blatt „Daten“, Zeilen ab Zeile 5 (Kopfzeile in Zeile 4)</p>
+<script>
+(function () {
+  var DATEI = 'daten/mengenliste/Mengenliste_Beispielprojekt.xlsx';
+  var status = document.getElementById('status');
+
+  function fehler(text) {
+    status.textContent = 'Fehler: ' + text;
+    status.className = 'fehler';
+  }
+
+  function start() {
+    fetch(DATEI)
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status + ' beim Laden von ' + DATEI);
+        return r.arrayBuffer();
+      })
+      .then(function (buf) {
+        var wb = XLSX.read(buf, { type: 'array' });
+        var ws = wb.Sheets['Daten'] || wb.Sheets[wb.SheetNames[0]];
+        // range: 4 = ab Excel-Zeile 5 (Zeilen 1-4: Titel, Hinweis, Leerzeile, Kopfzeile)
+        var zeilen = XLSX.utils.sheet_to_json(ws, { header: 1, range: 4, blankrows: false, defval: '' });
+        var daten = zeilen.filter(function (z) {
+          return z.some(function (c) { return c !== '' && c !== null; });
+        });
+        status.textContent = 'Hallo Esslingen: ' + daten.length + ' Zeilen';
+      })
+      .catch(function (e) { fehler(e.message); });
+  }
+
+  var s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+  s.onload = start;
+  s.onerror = function () { fehler('SheetJS konnte nicht geladen werden.'); };
+  document.head.appendChild(s);
+})();
+</script>
+</body>
+</html>
