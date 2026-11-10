@@ -5,26 +5,37 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mengenliste Viewer</title>
 <style>
-  :root { --rand: #d0d4da; --kopf: #eef1f5; --gruppe: #f6f7f9; --akzent: #1f5fa8; --text: #222; --leise: #666; }
+  :root { --rand: #d0d4da; --kopf: #eef1f5; --gruppe: #f6f7f9; --akzent: #1f5fa8; --text: #222; --leise: #666; --annahme: #8a5a00; --offen: #b00020; }
   * { box-sizing: border-box; }
   body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 16px; background: #fff; color: var(--text); }
   h1 { font-size: 1.4rem; margin: 0 0 4px; }
-  .quelle { color: var(--leise); font-size: .9rem; margin: 0 0 16px; }
+  .quelle { color: var(--leise); font-size: .9rem; margin: 0 0 12px; }
+  .grundlagen { font-size: .85rem; color: var(--leise); margin: 0 0 12px; padding: 8px 12px; background: var(--gruppe); border-left: 3px solid var(--akzent); }
+  .grundlagen ul { margin: 4px 0 0; padding-left: 18px; }
   .leiste { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px; }
   .leiste input[type=search] { padding: 6px 8px; min-width: 220px; flex: 1 1 220px; max-width: 360px; }
   .leiste select { padding: 6px 8px; }
   .ablage { border: 2px dashed var(--rand); border-radius: 6px; padding: 10px 14px; color: var(--leise); font-size: .9rem; margin-bottom: 12px; }
   .ablage.aktiv { border-color: var(--akzent); color: var(--akzent); }
   .info { color: var(--leise); font-size: .9rem; margin-bottom: 8px; }
-  .fehler { color: #b00020; font-weight: 600; }
+  .fehler { color: var(--offen); font-weight: 600; }
   .rahmen { overflow-x: auto; }
   table { border-collapse: collapse; width: 100%; font-size: .95rem; }
   th, td { border: 1px solid var(--rand); padding: 6px 8px; text-align: left; vertical-align: top; }
   th { background: var(--kopf); cursor: pointer; user-select: none; white-space: nowrap; }
+  th.neu { background: #e3ecf7; }
   th .pfeil { color: var(--akzent); margin-left: 4px; }
   td.zahl, th.zahl { text-align: right; }
   td.zahl { font-variant-numeric: tabular-nums; white-space: nowrap; }
   td.pos { white-space: nowrap; }
+  td .weg { display: block; font-size: .78rem; color: var(--leise); margin-top: 2px; }
+  td .weg.annahme { color: var(--annahme); }
+  td .weg.offen { color: var(--offen); }
+  .marke { font-size: .75rem; padding: 0 4px; border-radius: 3px; margin-left: 4px; white-space: nowrap; }
+  .marke.annahme { background: #fff3d6; color: var(--annahme); }
+  .marke.interpretation { background: #e6eefb; color: var(--akzent); }
+  .offenwert { color: var(--offen); font-size: .85rem; }
+  .nichtbil { color: var(--leise); font-style: italic; }
   tr.gruppe td { background: var(--gruppe); font-weight: 600; }
   tbody tr:not(.gruppe):hover td { background: #fafbfc; }
 </style>
@@ -33,12 +44,23 @@
 <h1>Mengenliste</h1>
 <p class="quelle" id="quelle">Lade …</p>
 
+<div class="grundlagen" id="grundlagen" hidden>
+  <strong>Grundlagen der Spalten Material, Volumen, Tonnage</strong> (automatisch aus dem Kurztext abgeleitet, bitte prüfen)
+  <ul>
+    <li>Rohdichten Beton und Holz: <code>daten/gemeinsam/faktoren_oekobaudat.csv</code>, Spalte kg_je_deklarierte_einheit (je m³). Bei Stahlbeton nur Beton, die Bewehrung steht in eigenen Positionen.</li>
+    <li>Metergewichte Stahlprofile: <code>daten/gemeinsam/profile.csv</code>.</li>
+    <li><span class="marke annahme">Annahme</span> Dichte Baustahl und Betonstahl 7850 kg/m³ (nicht in den Daten enthalten).</li>
+    <li><span class="marke interpretation">Interpretation</span> fachliche Deutung des Texts, z. B. „Stahlbeton“ bei tragenden Bauteilen ohne ausdrückliche Angabe.</li>
+    <li><span class="offenwert">offen</span> Angaben fehlen; es wird nicht geschätzt. Grund steht unter dem Material.</li>
+  </ul>
+</div>
+
 <div class="ablage" id="ablage">
   Andere Excel-Datei öffnen: hierher ziehen oder <input type="file" id="datei" accept=".xlsx,.xls,.xlsm">
 </div>
 
 <div class="leiste">
-  <input type="search" id="suche" placeholder="Suche in Pos. und Kurztext …">
+  <input type="search" id="suche" placeholder="Suche in Pos., Kurztext und Material …">
   <label>Einheit: <select id="einheit"><option value="">alle</option></select></label>
   <label><input type="checkbox" id="gruppieren" checked> nach Titel gruppieren</label>
 </div>
@@ -49,21 +71,220 @@
 <script>
 (function () {
   var STANDARD_DATEI = 'daten/mengenliste/Mengenliste_Beispielprojekt.xlsx';
+  var FAKTOREN_DATEI = 'daten/gemeinsam/faktoren_oekobaudat.csv';
+  var PROFILE_DATEI = 'daten/gemeinsam/profile.csv';
+  var DICHTE_STAHL = 7850; // Annahme, kg/m³ (nicht in den Daten)
+
   var el = function (id) { return document.getElementById(id); };
-
-  var zustand = { kopf: [], zeilen: [], sortSpalte: -1, sortAuf: true, zahlSpalten: {} };
-
-  function zeigeFehler(text) {
-    el('info').innerHTML = '<span class="fehler">Fehler: ' + esc(text) + '</span>';
-  }
+  var zustand = { kopf: [], zeilen: [], sortSpalte: -1, sortAuf: true, zahlSpalten: {}, neuAb: -1 };
+  var ref = { dichte: {}, profile: {} }; // dichte[kategorie] = kg/m³, profile['HEB 200'] = kg/m
 
   function esc(s) {
     return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; });
   }
+  function zeigeFehler(text) { el('info').innerHTML = '<span class="fehler">Fehler: ' + esc(text) + '</span>'; }
 
   var zahlFormat = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 3 });
+  var f = function (x, n) { return new Intl.NumberFormat('de-DE', { maximumFractionDigits: n === undefined ? 3 : n }).format(x); };
+  var zahl = function (s) { return parseFloat(String(s).replace(',', '.')); };
 
-  // Excel-Arbeitsmappe einlesen: Kopfzeile suchen (erste Zelle "Pos."), sonst Zeile 4 laut DATEN.md
+  // ---------- Referenzdaten (CSV, Semikolon, Dezimalkomma) ----------
+  function leseCsv(text) {
+    var zeilen = text.replace(/\r/g, '').split('\n').filter(function (z) { return z.trim() !== ''; });
+    var kopf = zeilen[0].split(';');
+    return zeilen.slice(1).map(function (z) {
+      var w = z.split(';'), o = {};
+      kopf.forEach(function (k, i) { o[k.trim()] = (w[i] || '').trim(); });
+      return o;
+    });
+  }
+  function ladeReferenzen() {
+    var holen = function (p) { return fetch(p).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status + ' bei ' + p); return r.text(); }); };
+    return Promise.all([holen(FAKTOREN_DATEI), holen(PROFILE_DATEI)]).then(function (t) {
+      leseCsv(t[0]).forEach(function (r) {
+        if (/m3/.test(r.deklarierte_einheit)) ref.dichte[r.kategorie] = zahl(r.kg_je_deklarierte_einheit);
+      });
+      leseCsv(t[1]).forEach(function (r) { ref.profile[r.profil.toUpperCase()] = zahl(r.g_kg_je_m); });
+    });
+  }
+
+  // ---------- Auswertung des Kurztexts ----------
+  // Ergebnis: { material, volumen ('' = offen/leer), tonnage, wegV, wegT, marke: '' | 'annahme' | 'interpretation', offenV, offenT, nicht }
+  function laengeInM(wert, einheit) {
+    var x = zahl(wert);
+    return einheit === 'mm' ? x / 1000 : einheit === 'cm' ? x / 100 : x;
+  }
+
+  function auswerten(text, menge, einheit) {
+    var t = String(text), tl = t.toLowerCase();
+    var e = String(einheit).trim();
+    var r = { material: '', volumen: '', tonnage: '', wegV: [], wegT: [], marken: {}, offenV: '', offenT: '', nicht: false };
+    var m;
+
+    // 1) Kein Tragwerksmaterial
+    if (/schalung|dämmung|daemmung|beschichtung|korrosionsschutz|baustelleneinrichtung/.test(tl)) {
+      r.material = 'nicht bilanziert'; r.nicht = true;
+      r.wegV.push('kein Tragwerksmaterial (Schalung, Dämmung, Beschichtung, Baustelleneinrichtung)');
+      return r;
+    }
+
+    // 2) Pauschalpositionen mit Material
+    if (e === 'psch') {
+      r.material = /holzschraube|stahlformteil/.test(tl) ? 'Stahl (Verbindungsmittel Holzbau)' : 'offen';
+      r.offenV = r.offenT = 'Pauschalposition, keine Menge';
+      return r;
+    }
+
+    var klasse = (m = t.match(/C\s?(\d{2})\/(\d{2})/)) ? 'C' + m[1] + '/' + m[2] : '';
+    var ohneKlasse = t.replace(/C\s?\d{2}\/\d{2}/g, ' ');
+
+    // 3) Betonstahl
+    if (!klasse && /bewehrung|betonstahl|\bbst\b|b500/.test(tl)) {
+      var sorte = (m = t.match(/B\s?500\s?([AB])?/i)) ? 'B500' + (m[1] ? m[1].toUpperCase() : '') : (/bst\s?500/i.test(t) ? 'BSt 500' : '');
+      r.material = 'Betonstahl' + (sorte ? ' ' + sorte : '');
+      return stahlMasse(r, menge, e, t);
+    }
+
+    // 4) Baustahl
+    var profil = (m = t.match(/\b(IPE|HEA|HEB|HEM)\s?(\d{2,4})/i)) ? m[1].toUpperCase() + ' ' + m[2] : '';
+    var guete = (m = t.match(/\bS\s?(235|275|355|460)\b/)) ? 'S' + m[1] : '';
+    if (profil || guete || /rundstahl|trapezblech|kopfplatte|kleinteile|schrauben/.test(tl)) {
+      var art = profil ? profil : /rundstahl/.test(tl) ? 'Rundstahl' : /trapezblech/.test(tl) ? 'Trapezblech' : /kopfplatte|kleinteile|schrauben/.test(tl) ? 'Kleinteile' : 'Profil';
+      r.material = 'Baustahl' + (guete ? ' ' + guete : '') + ' (' + art + ')';
+      if (e === 'm²' || e === 'm2') {
+        r.offenV = r.offenT = 'Blechdicke im Text, aber abgewickelte Breite bzw. Gewicht je m² fehlen';
+        return r;
+      }
+      if (e === 'Stk') {
+        var L = (m = t.match(/\b[LlHh]\s*=\s*(\d+(?:[.,]\d+)?)\s*(mm|cm|m)\b/)) ? laengeInM(m[1], m[2]) : NaN;
+        var g = profil ? ref.profile[profil] : undefined;
+        if (!g) { r.offenV = r.offenT = profil ? 'Metergewicht ' + profil + ' nicht in profile.csv' : 'Profil fehlt'; return r; }
+        if (!(L > 0)) { r.offenV = r.offenT = 'Länge fehlt'; return r; }
+        var kg = menge * L * g;
+        r.tonnage = kg / 1000;
+        r.wegT.push(f(menge) + ' Stk × ' + f(L) + ' m × ' + f(g) + ' kg/m (profile.csv) = ' + f(r.tonnage) + ' t');
+        r.volumen = kg / DICHTE_STAHL;
+        r.wegV.push(f(kg, 1) + ' kg / ' + DICHTE_STAHL + ' kg/m³ = ' + f(r.volumen) + ' m³');
+        r.marken.annahme = 1;
+        return r;
+      }
+      return stahlMasse(r, menge, e, t);
+    }
+
+    // 5) Holz
+    var holzKat = '', holzName = '';
+    t = ohneKlasse; // Betonklasse (z. B. C30/37) nicht als Holz-Sortierklasse C30 lesen
+    if (/brettsperrholz|\bclt\b|\bbsp\b/i.test(t)) { holzKat = 'BSP'; holzName = 'Brettsperrholz (BSP)'; }
+    else if (/brettschichtholz|\bbsh\b|\bGL\d{2}[hc]\b/i.test(t)) {
+      holzKat = 'BSH'; holzName = 'Brettschichtholz' + ((m = t.match(/\bGL\d{2}[hc]\b/i)) ? ' ' + m[0] : '');
+    } else if (/\bkvh\b|konstruktionsholz|vollholz|nadelholz|\bC24\b|\bC30\b/i.test(t)) {
+      holzKat = 'VOLLHOLZ'; holzName = 'Nadelholz' + ((m = t.match(/\bKVH\b/)) ? ' KVH' : '') + ((m = t.match(/\b(C24|C30|S10|S13)\b/)) ? ' ' + m[1] : '');
+    }
+    if (holzKat) {
+      r.material = holzName;
+      volumenAusText(r, ohneKlasse, menge, e);
+      return masseAusVolumen(r, holzKat);
+    }
+
+    // 6) Spannbeton-Hohldielen: Hohlräume -> kein Vollquerschnitt ansetzen
+    if (/hohldiele|spannbeton/.test(tl)) {
+      r.material = 'Spannbeton (Hohldielen-Fertigteil)';
+      r.offenV = r.offenT = 'Hohlquerschnitt: Betonvolumen je m² laut Herstellerangabe erforderlich';
+      return r;
+    }
+
+    // 7) Mauerwerk
+    if (/mauerwerk|ziegel|kalksandstein/.test(tl)) {
+      r.material = /ziegel/.test(tl) ? 'Ziegelmauerwerk' : 'Mauerwerk';
+      volumenAusText(r, ohneKlasse, menge, e);
+      if (r.volumen !== '') r.offenT = 'Rohdichteklasse fehlt';
+      return r;
+    }
+
+    // 8) Beton / Stahlbeton
+    if (klasse || /beton/.test(tl)) {
+      var stbBelegt = /stahlbeton|\bstb\b|\bstb\.|\bwu\b/i.test(t);
+      var istAufbeton = /aufbeton|sauberkeitsschicht|fundament/.test(tl);
+      var stbBauteil = !istAufbeton && /wand|wände|stütze|decke|unterz|platte|attika|treppe|balken|riegel/.test(tl);
+      var grund = stbBelegt ? 'Stahlbeton' : stbBauteil ? 'Stahlbeton' : 'Beton';
+      if (!stbBelegt && stbBauteil) r.marken.interpretation = 1;
+      r.material = grund + (klasse ? ' ' + klasse : ' (Festigkeitsklasse offen)') + (/fertigteil/.test(tl) && !/aufbeton/.test(tl) ? ', Fertigteil' : '');
+      if (!stbBelegt && stbBauteil) r.wegV.push('„Stahlbeton“ abgeleitet aus Bauteil (tragendes Bauteil)');
+      volumenAusText(r, ohneKlasse, menge, e);
+      var kat = klasse ? 'BETON_' + klasse.replace('/', '_') : '';
+      if (!klasse) { if (r.volumen !== '') r.offenT = 'Festigkeitsklasse fehlt, keine Rohdichte zuordenbar'; return r; }
+      if (!ref.dichte[kat]) { if (r.volumen !== '') r.offenT = 'Rohdichte ' + klasse + ' nicht in faktoren_oekobaudat.csv'; return r; }
+      if (/gitterträger/.test(tl)) r.wegT.push('Gitterträger nicht enthalten (Stahlmenge fehlt)');
+      return masseAusVolumen(r, kat);
+    }
+
+    r.material = 'offen';
+    r.offenV = r.offenT = 'Material nicht erkannt';
+    return r;
+  }
+
+  // Stahl in t, kg oder m³ mit Bewehrungsgrad
+  function stahlMasse(r, menge, e, t) {
+    var m, kg;
+    if (e === 't') { kg = menge * 1000; r.tonnage = menge; r.wegT.push('Menge in t übernommen'); }
+    else if (e === 'kg') { kg = menge; r.tonnage = menge / 1000; r.wegT.push(f(menge) + ' kg / 1000 = ' + f(r.tonnage) + ' t'); }
+    else if ((e === 'm³' || e === 'm3') && (m = t.match(/(\d+(?:[.,]\d+)?)\s*kg\/m(?:³|3)/))) {
+      var grad = zahl(m[1]);
+      kg = menge * grad; r.tonnage = kg / 1000;
+      r.wegT.push(f(menge) + ' m³ Beton × ' + f(grad) + ' kg/m³ (Bewehrungsgrad aus Text) = ' + f(r.tonnage) + ' t');
+      r.marken.interpretation = 1;
+    } else { r.offenV = r.offenT = 'Einheit ' + e + ' für Stahl nicht auswertbar'; return r; }
+    r.volumen = kg / DICHTE_STAHL;
+    r.wegV.push(f(kg, 1) + ' kg / ' + DICHTE_STAHL + ' kg/m³ = ' + f(r.volumen) + ' m³');
+    r.marken.annahme = 1;
+    return r;
+  }
+
+  // Volumen aus Einheit und Abmessungen im Text
+  function volumenAusText(r, t, menge, e) {
+    var m;
+    var quer = (m = t.match(/(\d+(?:[.,]\d+)?)\s*[x×\/]\s*(\d+(?:[.,]\d+)?)(?!\s*(?:mm|m\b))/)) ? [zahl(m[1]) / 100, zahl(m[2]) / 100] : null; // Querschnitt in cm
+    var abstand = (m = t.match(/\be\s*=\s*(\d+(?:[.,]\d+)?)\s*(mm|cm|m)\b/)) ? laengeInM(m[1], m[2]) : NaN;
+    var laenge = (m = t.match(/\b[LlHh]\s*=\s*(\d+(?:[.,]\d+)?)\s*(mm|cm|m)\b/)) ? laengeInM(m[1], m[2]) : NaN;
+    var dicke = NaN;
+    if ((m = t.match(/\bd\s*=\s*(\d+(?:[.,]\d+)?)\s*(mm|cm|m)\b/))) dicke = laengeInM(m[1], m[2]);
+    else if ((m = t.replace(/\be\s*=\s*\d+(?:[.,]\d+)?\s*(mm|cm|m)\b/, '').match(/(\d+(?:[.,]\d+)?)\s*(mm|cm)\b/))) dicke = laengeInM(m[1], m[2]);
+
+    if (e === 'm³' || e === 'm3') {
+      r.volumen = menge; r.wegV.push('Menge in m³ übernommen');
+    } else if (e === 'm²' || e === 'm2') {
+      if (quer && abstand > 0) {
+        var je = quer[0] * quer[1] / abstand;
+        r.volumen = menge * je;
+        r.wegV.push(f(menge) + ' m² × ' + f(quer[0]) + ' × ' + f(quer[1]) + ' m / e=' + f(abstand) + ' m = ' + f(r.volumen) + ' m³');
+      } else if (dicke > 0) {
+        r.volumen = menge * dicke;
+        r.wegV.push(f(menge) + ' m² × ' + f(dicke) + ' m = ' + f(r.volumen) + ' m³');
+      } else r.offenV = 'Dicke fehlt im Text';
+    } else if (e === 'lfm' || e === 'm') {
+      if (quer) {
+        r.volumen = menge * quer[0] * quer[1];
+        r.wegV.push(f(menge) + ' m × ' + f(quer[0]) + ' × ' + f(quer[1]) + ' m = ' + f(r.volumen) + ' m³');
+      } else r.offenV = 'Querschnitt fehlt im Text';
+    } else if (e === 'Stk') {
+      if (quer && laenge > 0) {
+        r.volumen = menge * quer[0] * quer[1] * laenge;
+        r.wegV.push(f(menge) + ' Stk × ' + f(quer[0]) + ' × ' + f(quer[1]) + ' m × ' + f(laenge) + ' m = ' + f(r.volumen) + ' m³');
+      } else r.offenV = !quer ? 'Querschnitt fehlt im Text' : 'Länge fehlt im Text';
+    } else r.offenV = 'Einheit ' + e + ' nicht auswertbar';
+    if (r.volumen === '') r.offenT = r.offenV;
+  }
+
+  function masseAusVolumen(r, kat) {
+    if (r.volumen === '') { r.offenT = r.offenT || r.offenV; return r; }
+    var rho = ref.dichte[kat];
+    if (!rho) { r.offenT = 'Rohdichte ' + kat + ' nicht in faktoren_oekobaudat.csv'; return r; }
+    r.tonnage = r.volumen * rho / 1000;
+    r.wegT.push(f(r.volumen) + ' m³ × ' + f(rho, 1) + ' kg/m³ (ÖKOBAUDAT ' + kat + ') = ' + f(r.tonnage) + ' t');
+    return r;
+  }
+
+  // ---------- Excel einlesen ----------
   function verarbeite(buf, name) {
     var wb = XLSX.read(buf, { type: 'array' });
     var blatt = wb.Sheets['Daten'] ? 'Daten' : wb.SheetNames[0];
@@ -82,54 +303,86 @@
       .map(function (z, j) { return { excelZeile: kopfIdx + 2 + j, werte: kopf.map(function (_, s) { return z[s] === undefined ? '' : z[s]; }) }; })
       .filter(function (z) { return z.werte.some(function (c) { return c !== '' && c !== null; }); });
 
-    // Spalten, die nur Zahlen (oder leer) enthalten, rechtsbündig und numerisch sortieren
-    var zahlSpalten = {};
+    zustand = { kopf: kopf, zeilen: zeilen, sortSpalte: -1, sortAuf: true, zahlSpalten: {}, neuAb: -1 };
+
+    // Auswertung nur, wenn Kurztext, Menge und Einheit vorhanden sind
+    var tS = spalte('kurztext'), mS = spalte('menge'), eS = spalte('einheit');
+    if (tS >= 0 && mS >= 0 && eS >= 0) {
+      zustand.neuAb = kopf.length;
+      kopf.push('Material', 'Volumen [m³]', 'Tonnage [t]');
+      zeilen.forEach(function (z) {
+        var menge = typeof z.werte[mS] === 'number' ? z.werte[mS] : zahl(z.werte[mS]);
+        var a = auswerten(z.werte[tS], menge, z.werte[eS]);
+        z.auswertung = a;
+        z.werte.push(a.material, a.volumen, a.tonnage);
+      });
+      el('grundlagen').hidden = false;
+    } else el('grundlagen').hidden = true;
+
     kopf.forEach(function (_, s) {
       var werte = zeilen.map(function (z) { return z.werte[s]; }).filter(function (v) { return v !== ''; });
-      zahlSpalten[s] = werte.length > 0 && werte.every(function (v) { return typeof v === 'number'; });
+      zustand.zahlSpalten[s] = werte.length > 0 && werte.every(function (v) { return typeof v === 'number'; });
     });
 
-    zustand = { kopf: kopf, zeilen: zeilen, sortSpalte: -1, sortAuf: true, zahlSpalten: zahlSpalten };
+    el('quelle').textContent = 'Quelle: ' + name + ', Blatt „' + blatt + '“, Kopfzeile in Zeile ' + (kopfIdx + 1) + ', Daten ab Zeile ' + (kopfIdx + 2);
 
-    el('quelle').textContent = 'Quelle: ' + name + ', Blatt „' + blatt + '“, Kopfzeile in Zeile ' + (kopfIdx + 1) +
-      ', Daten ab Zeile ' + (kopfIdx + 2);
-
-    var einheitSpalte = spalte('einheit');
     var sel = el('einheit');
     sel.innerHTML = '<option value="">alle</option>';
-    if (einheitSpalte >= 0) {
+    if (eS >= 0) {
       var einheiten = {};
-      zeilen.forEach(function (z) { var e = String(z.werte[einheitSpalte]); if (e) einheiten[e] = true; });
-      Object.keys(einheiten).sort().forEach(function (e) {
-        var o = document.createElement('option'); o.value = e; o.textContent = e; sel.appendChild(o);
+      zeilen.forEach(function (z) { var x = String(z.werte[eS]); if (x) einheiten[x] = true; });
+      Object.keys(einheiten).sort().forEach(function (x) {
+        var o = document.createElement('option'); o.value = x; o.textContent = x; sel.appendChild(o);
       });
       sel.disabled = false;
-    } else {
-      sel.disabled = true;
-    }
+    } else sel.disabled = true;
     el('suche').value = '';
     zeichne();
   }
 
   function spalte(name) {
-    for (var i = 0; i < zustand.kopf.length; i++) {
-      if (zustand.kopf[i].toLowerCase().indexOf(name) === 0) return i;
-    }
+    for (var i = 0; i < zustand.kopf.length; i++) if (zustand.kopf[i].toLowerCase().indexOf(name) === 0) return i;
     return -1;
   }
 
   function vergleiche(a, b, s) {
     var x = a.werte[s], y = b.werte[s];
-    if (zustand.zahlSpalten[s]) {
-      x = x === '' ? -Infinity : x; y = y === '' ? -Infinity : y;
-      return x - y;
-    }
+    if (zustand.zahlSpalten[s]) { x = x === '' ? -Infinity : x; y = y === '' ? -Infinity : y; return x - y; }
     return String(x).localeCompare(String(y), 'de', { numeric: true, sensitivity: 'base' });
+  }
+
+  function titel(z) {
+    var p = String(z.werte[spalte('pos')]), i = p.indexOf('.');
+    return i > 0 ? p.slice(0, i) : p;
+  }
+
+  function zelle(z, i) {
+    var v = z.werte[i], a = z.auswertung, neu = zustand.neuAb;
+    if (a && i >= neu) {
+      if (i === neu) {
+        var marken = (a.marken.annahme ? '<span class="marke annahme">Annahme</span>' : '') +
+                     (a.marken.interpretation ? '<span class="marke interpretation">Interpretation</span>' : '');
+        var wege = '';
+        a.wegV.concat(a.wegT).forEach(function (w) { wege += '<span class="weg' + (a.nicht ? '' : '') + '">' + esc(w) + '</span>'; });
+        var offen = {};
+        if (a.offenV) offen[a.offenV] = 1;
+        if (a.offenT) offen[a.offenT] = 1;
+        Object.keys(offen).forEach(function (w) { wege += '<span class="weg offen">offen: ' + esc(w) + '</span>'; });
+        return '<td' + (a.nicht ? ' class="nichtbil"' : '') + '>' + esc(v) + marken + wege + '</td>';
+      }
+      if (v === '') {
+        if (a.nicht) return '<td class="zahl nichtbil">–</td>';
+        var grund = i === neu + 1 ? a.offenV : a.offenT;
+        return '<td class="zahl"><span class="offenwert" title="' + esc(grund) + '">offen</span></td>';
+      }
+    }
+    if (zustand.zahlSpalten[i]) return '<td class="zahl">' + (v === '' ? '' : zahlFormat.format(v)) + '</td>';
+    return '<td' + (i === spalte('pos') ? ' class="pos"' : '') + '>' + esc(v) + '</td>';
   }
 
   function zeichne() {
     var kopf = zustand.kopf;
-    var posS = spalte('pos'), textS = spalte('kurztext'), einhS = spalte('einheit');
+    var posS = spalte('pos'), textS = spalte('kurztext'), einhS = spalte('einheit'), matS = spalte('material');
     var suche = el('suche').value.trim().toLowerCase();
     var einheit = el('einheit').value;
     var gruppieren = el('gruppieren').checked && posS >= 0;
@@ -137,61 +390,44 @@
     var zeilen = zustand.zeilen.filter(function (z) {
       if (einheit && String(z.werte[einhS]) !== einheit) return false;
       if (!suche) return true;
-      var t = (posS >= 0 ? z.werte[posS] : '') + ' ' + (textS >= 0 ? z.werte[textS] : z.werte.join(' '));
+      var t = [posS, textS, matS].filter(function (s) { return s >= 0; }).map(function (s) { return z.werte[s]; }).join(' ');
+      if (textS < 0) t = z.werte.join(' ');
       return t.toLowerCase().indexOf(suche) >= 0;
     });
 
     var s = zustand.sortSpalte;
-    if (s >= 0) {
-      zeilen.sort(function (a, b) { var r = vergleiche(a, b, s); return zustand.sortAuf ? r : -r; });
-    }
-    // Bei Gruppierung: stabil nach Titel (Teil vor dem ersten Punkt) ordnen, innerhalb des Titels gilt die Sortierung
+    if (s >= 0) zeilen.sort(function (a, b) { var r = vergleiche(a, b, s); return zustand.sortAuf ? r : -r; });
     if (gruppieren) {
       zeilen = zeilen.map(function (z, i) { return { z: z, i: i }; })
-        .sort(function (a, b) {
-          var r = titel(a.z).localeCompare(titel(b.z), 'de', { numeric: true });
-          return r || a.i - b.i;
-        })
+        .sort(function (a, b) { return titel(a.z).localeCompare(titel(b.z), 'de', { numeric: true }) || a.i - b.i; })
         .map(function (o) { return o.z; });
     }
 
-    var thead = '<tr>' + kopf.map(function (k, i) {
+    el('tabelle').tHead.innerHTML = '<tr>' + kopf.map(function (k, i) {
       var pfeil = i === s ? '<span class="pfeil">' + (zustand.sortAuf ? '▲' : '▼') + '</span>' : '';
-      return '<th data-s="' + i + '"' + (zustand.zahlSpalten[i] ? ' class="zahl"' : '') + ' title="Klicken zum Sortieren">' + esc(k) + pfeil + '</th>';
+      var kl = [zustand.zahlSpalten[i] || (zustand.neuAb >= 0 && i > zustand.neuAb) ? 'zahl' : '', zustand.neuAb >= 0 && i >= zustand.neuAb ? 'neu' : ''].join(' ').trim();
+      return '<th data-s="' + i + '"' + (kl ? ' class="' + kl + '"' : '') + ' title="Klicken zum Sortieren">' + esc(k) + pfeil + '</th>';
     }).join('') + '</tr>';
-    el('tabelle').tHead.innerHTML = thead;
 
-    var html = '', letzterTitel = null;
+    var html = '', letzter = null;
     zeilen.forEach(function (z) {
       if (gruppieren) {
         var t = titel(z);
-        if (t !== letzterTitel) {
+        if (t !== letzter) {
           var anzahl = zeilen.filter(function (y) { return titel(y) === t; }).length;
           html += '<tr class="gruppe"><td colspan="' + kopf.length + '">Titel ' + esc(t) + ' (' + anzahl + ' Pos.)</td></tr>';
-          letzterTitel = t;
+          letzter = t;
         }
       }
-      html += '<tr title="Excel-Zeile ' + z.excelZeile + '">' + z.werte.map(function (v, i) {
-        if (zustand.zahlSpalten[i]) return '<td class="zahl">' + (v === '' ? '' : zahlFormat.format(v)) + '</td>';
-        return '<td' + (i === posS ? ' class="pos"' : '') + '>' + esc(v) + '</td>';
-      }).join('') + '</tr>';
+      html += '<tr title="Excel-Zeile ' + z.excelZeile + '">' + z.werte.map(function (_, i) { return zelle(z, i); }).join('') + '</tr>';
     });
     el('tabelle').tBodies[0].innerHTML = html || '<tr><td colspan="' + kopf.length + '">Keine Treffer.</td></tr>';
-
     el('info').textContent = zeilen.length + ' von ' + zustand.zeilen.length + ' Positionen angezeigt';
-  }
-
-  function titel(z) {
-    var p = String(z.werte[spalte('pos')]);
-    var i = p.indexOf('.');
-    return i > 0 ? p.slice(0, i) : p;
   }
 
   function ladeDatei(file) {
     var r = new FileReader();
-    r.onload = function () {
-      try { verarbeite(new Uint8Array(r.result), file.name); } catch (e) { zeigeFehler(e.message); }
-    };
+    r.onload = function () { try { verarbeite(new Uint8Array(r.result), file.name); } catch (e) { zeigeFehler(e.message); } };
     r.onerror = function () { zeigeFehler('Datei konnte nicht gelesen werden.'); };
     r.readAsArrayBuffer(file);
   }
@@ -216,7 +452,9 @@
       if (ev.dataTransfer.files[0]) ladeDatei(ev.dataTransfer.files[0]);
     });
 
-    fetch(STANDARD_DATEI)
+    ladeReferenzen()
+      .catch(function (e) { zeigeFehler('Referenzdaten nicht geladen (' + e.message + '). Tonnagen bleiben offen.'); })
+      .then(function () { return fetch(STANDARD_DATEI); })
       .then(function (r) {
         if (!r.ok) throw new Error('HTTP ' + r.status + ' beim Laden von ' + STANDARD_DATEI);
         return r.arrayBuffer();
